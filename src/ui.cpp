@@ -32,13 +32,13 @@ void sanitize_ascii(char *s) {
 
 // Print a temperature value followed by a hand-drawn degree glyph and unit.
 // Avoids the missing '°' bitmap in the default font.
-static void ui_print_temp(float t, const char *unit) {
+static void ui_print_temp(float t, const char *unit, uint16_t col) {
   char buf[16];
   snprintf(buf, sizeof(buf), "%.1f", t);
   tft.print(buf);
   int cx = tft.getCursorX();
   int cy = tft.getCursorY();
-  tft.fillCircle(cx + 2, cy + 2, 2, tft.getTextColor());  // degree dot
+  tft.fillCircle(cx + 2, cy + 2, 2, col);  // degree dot
   tft.setCursor(cx + 6, cy);
   tft.print(unit);
 }
@@ -67,7 +67,7 @@ void ui_screen_loading(unsigned long waitedMs, unsigned long timeoutMs) {
   tft.setCursor(14, 116);
   tft.setTextColor(ST7735_YELLOW);
   char buf[24];
-  snprintf(buf, sizeof(buf), "%.0lfs", (unsigned long)(waitedMs / 1000));
+  snprintf(buf, sizeof(buf), "%.0lds", (unsigned long)(waitedMs / 1000));
   tft.print(buf);
 }
 
@@ -257,7 +257,7 @@ void ui_screen_network(int rssi, String intIp, String extIp, unsigned long uptim
   tft.setTextColor(ST7735_GREEN);
   tft.setTextSize(2);
   tft.setCursor(2, 80);
-  snprintf(buf, sizeof(buf), "%d%% sig", map(rssi, -90, -30, 0, 100));
+  snprintf(buf, sizeof(buf), "%ld%% sig", (long)map(rssi, -90, -30, 0, 100));
   tft.print(buf);
   tft.setTextSize(1);
   tft.setTextColor(ST7735_WHITE);
@@ -293,7 +293,7 @@ void ui_screen_esphome() {
       // Temperature sensor carries a 'C' unit -> draw a proper degree glyph.
       if (strstr(s.state, "C") && strchr(s.state, '.')) {
         float v = atof(s.state);
-        if (v != 0.0f || strstr(s.state, "0.")) ui_print_temp(v, "C");
+        if (v != 0.0f || strstr(s.state, "0.")) ui_print_temp(v, "C", ST7735_GREEN);
         else { snprintf(buf, sizeof(buf), "%s", s.state); tft.print(buf); }
       } else {
         snprintf(buf, sizeof(buf), "%s", s.state);
@@ -326,7 +326,7 @@ void ui_screen_detail(int h, int m, int s, const Weather &w) {
     tft.setTextColor(ST7735_GREEN);
     tft.setTextSize(3);
     tft.setCursor(36, 76);
-    ui_print_temp(w.temp, "C");
+    ui_print_temp(w.temp, "C", ST7735_GREEN);
 
     tft.setTextColor(ST7735_WHITE);
     tft.setTextSize(1);
@@ -389,7 +389,7 @@ void ui_draw_weather(const Weather &w) {
   tft.setTextSize(2);
   tft.setCursor(4, 58);
   if (w.valid) {
-    ui_print_temp(w.temp, "C");
+    ui_print_temp(w.temp, "C", ST7735_GREEN);
   } else {
     tft.print("--.-");
     int cx = tft.getCursorX(), cy = tft.getCursorY();

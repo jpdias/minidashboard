@@ -59,12 +59,20 @@ void ui_screen_loading(unsigned long waitedMs, unsigned long timeoutMs) {
   tft.setTextSize(1);
   tft.setCursor(14, 78);
   tft.print("Loading data...");
-  // progress bar
+  // progress bar frame (filled portion updated separately)
   int w = 100, x = 14, y = 100;
   tft.drawRect(x, y, w, 8, ST7735_BLUE);
+  ui_loading_update(waitedMs, timeoutMs);
+}
+
+// Redraw only the progress bar + timer (cheap, no full-screen flicker).
+void ui_loading_update(unsigned long waitedMs, unsigned long timeoutMs) {
+  int w = 100, x = 14, y = 100;
   int pct = (timeoutMs > 0) ? constrain(map((long)waitedMs, 0, (long)timeoutMs, 0, w), 0, w) : 0;
-  tft.fillRect(x + 1, y + 1, pct, 6, ST7735_GREEN);
+  tft.fillRect(x + 1, y + 1, w - 1, 6, ST7735_BLACK);          // clear bar
+  tft.fillRect(x + 1, y + 1, pct, 6, ST7735_GREEN);            // fill bar
   tft.setCursor(14, 116);
+  tft.fillRect(14, 116, 40, 8, ST7735_BLACK);                  // clear timer
   tft.setTextColor(ST7735_YELLOW);
   char buf[24];
   snprintf(buf, sizeof(buf), "%.0lds", (unsigned long)(waitedMs / 1000));

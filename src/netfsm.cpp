@@ -60,8 +60,8 @@ static void net_start_task() {
                "&forecast_days=4&timezone=auto";
       break;
     case TASK_EXTIP:
-      netHost = "api.ipify.org";
-      netUrl = "/?format=text";
+      netHost = "ipinfo.io";
+      netUrl = "/json";
       break;
   }
   Serial.printf("[NET] start %d -> %s%s\n", netTask, netHost.c_str(), netUrl.c_str());

@@ -101,21 +101,13 @@ bool parse_forecast_body(const String &body, Forecast &f) {
 }
 
 bool parse_extip_body(const String &body, String &ip) {
-  bool headersDone = false;
-  String b;
-  // body may still contain headers; strip them
-  int nl = 0;
-  while (true) {
-    int next = body.indexOf('\n', nl);
-    String line = (next < 0) ? body.substring(nl) : body.substring(nl, next);
-    if (!headersDone) { if (line.length() <= 1) headersDone = true; }
-    else b += line;
-    if (next < 0) break;
-    nl = next + 1;
-  }
-  b.trim();
-  if (b.length() < 7 || b.indexOf('.') < 0) { Serial.printf("[IP] unexpected: '%s'\n", b.c_str()); return false; }
-  ip = b;
+  String json = json_only(body);
+  if (json.length() == 0) { Serial.println("[IP] no JSON"); return false; }
+  DynamicJsonDocument doc(512);
+  if (deserializeJson(doc, json.c_str())) { Serial.println("[IP] parse error"); return false; }
+  const char* p = doc["ip"] | "";
+  if (strlen(p) < 7 || strchr(p, '.') == NULL) { Serial.printf("[IP] unexpected: '%s'\n", p); return false; }
+  ip = p;
   Serial.printf("[IP] external=%s\n", ip.c_str());
   return true;
 }

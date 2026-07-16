@@ -43,21 +43,24 @@ void setup() {
   esphome_begin();
   monitors_begin();
 
-  // --- Boot loader: block on a loading screen until first weather + IP fetch ---
+  // --- Boot loader: block on a loading screen until weather (+IP) is fetched ---
   const unsigned long BOOT_TIMEOUT = 20000;
   unsigned long bootStart = millis();
   unsigned long lastLoad = 0;
   Serial.println("[BOOT] waiting for first data fetch...");
-  while (!netfsm_first_done() && millis() - bootStart < BOOT_TIMEOUT) {
+  ui_screen_loading(0, BOOT_TIMEOUT);   // draw static frame once
+  while (!net_weather().valid && millis() - bootStart < BOOT_TIMEOUT) {
     portal_handle();
     netfsm_tick();
     esphome_tick();
-    if (millis() - lastLoad > 200) {
+    if (millis() - lastLoad > 500) {
       lastLoad = millis();
-      ui_screen_loading(millis() - bootStart, BOOT_TIMEOUT);
+      ui_loading_update(millis() - bootStart, BOOT_TIMEOUT);
     }
   }
-  Serial.println("[BOOT] ready");
+  if (net_weather().valid) Serial.println("[BOOT] weather ready");
+  else Serial.println("[BOOT] timeout, proceeding");
+  delay(400);
 }
 
 void draw_screen(int h, int m, int s, int dow, int day, int mon, int yr) {

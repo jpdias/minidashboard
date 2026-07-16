@@ -13,6 +13,7 @@ static const char* EH_IDS[EH_MAX] = {
 static EspHomeState gSensors[EH_MAX];
 static EhState ehState = EH_IDLE;
 static unsigned long ehLast = 0;
+static bool ehFirst = true;
 static unsigned long ehTimer = 0;
 static int ehIdx = 0;
 static WiFiClient ehClient;
@@ -47,6 +48,7 @@ static String urlencode(const String &s) {
 void esphome_begin() {
   ehState = EH_IDLE;
   ehLast = 0;
+  ehFirst = true;
   ehIdx = 0;
 }
 
@@ -56,7 +58,8 @@ void esphome_tick() {
 
   switch (ehState) {
     case EH_IDLE:
-      if (millis() - ehLast >= EH_INTERVAL) {
+      if (ehFirst || millis() - ehLast >= EH_INTERVAL) {
+        ehFirst = false;
         ehHost = cfg.esphome_host;
         ehUrl = String("/sensor/") + urlencode(EH_IDS[ehIdx]);
         ehBody = "";
@@ -107,6 +110,9 @@ void esphome_tick() {
           strncpy(s.name, nm, sizeof(s.name) - 1);
           strncpy(s.state, doc["state"] | "", sizeof(s.state) - 1);
           strncpy(s.uom, doc["uom"] | "", sizeof(s.uom) - 1);
+          sanitize_ascii(s.name);
+          sanitize_ascii(s.state);
+          sanitize_ascii(s.uom);
           s.valid = true;
           Serial.printf("[EH] %s = %s %s\n", s.name, s.state, s.uom);
         } else {

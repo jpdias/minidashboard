@@ -12,10 +12,63 @@
 static Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 static bool ui_on = true;
 
+// The built-in GFX font is 7-bit ASCII; common Unicode glyphs (°, µ, ³, ², –, ', …)
+// have no defined bitmap and render as garbage. Map them to safe ASCII equivalents.
+void sanitize_ascii(char *s) {
+  for (char *p = s; *p; p++) {
+    unsigned char c = (unsigned char)*p;
+    switch (c) {
+      case 0xB0: *p = ' '; break;   // ° -> space
+      case 0xB5: *p = 'u'; break;   // µ -> u
+      case 0xB3: *p = '3'; break;   // ³ -> 3
+      case 0xB2: *p = '2'; break;   // ² -> 2
+      case 0x96: case 0x97: *p = '-'; break; // – — -> -
+      case 0x91: case 0x92: case 0x27: *p = '\''; break; // ' ' ->
+      case 0xE2: case 0x80: case 0x85: case 0xA0: *p = ' '; break; // misc UTF-8 -> space
+      default: break;
+    }
+  }
+}
+
+// Print a temperature value followed by a hand-drawn degree glyph and unit.
+// Avoids the missing '°' bitmap in the default font.
+static void ui_print_temp(float t, const char *unit) {
+  char buf[16];
+  snprintf(buf, sizeof(buf), "%.1f", t);
+  tft.print(buf);
+  int cx = tft.getCursorX();
+  int cy = tft.getCursorY();
+  tft.fillCircle(cx + 2, cy + 2, 2, tft.getTextColor());  // degree dot
+  tft.setCursor(cx + 6, cy);
+  tft.print(unit);
+}
+
 void ui_begin() {
   tft.initR(INITR_BLACKTAB);
   tft.setRotation(0);
   tft.fillScreen(ST7735_BLACK);
+}
+
+void ui_screen_loading(unsigned long waitedMs, unsigned long timeoutMs) {
+  tft.fillScreen(ST7735_BLACK);
+  tft.setTextColor(ST7735_CYAN);
+  tft.setTextSize(2);
+  tft.setCursor(18, 50);
+  tft.print("miniTV");
+  tft.setTextColor(ST7735_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(14, 78);
+  tft.print("Loading data...");
+  // progress bar
+  int w = 100, x = 14, y = 100;
+  tft.drawRect(x, y, w, 8, ST7735_BLUE);
+  int pct = (timeoutMs > 0) ? constrain(map((long)waitedMs, 0, (long)timeoutMs, 0, w), 0, w) : 0;
+  tft.fillRect(x + 1, y + 1, pct, 6, ST7735_GREEN);
+  tft.setCursor(14, 116);
+  tft.setTextColor(ST7735_YELLOW);
+  char buf[24];
+  snprintf(buf, sizeof(buf), "%.0lfs", (unsigned long)(waitedMs / 1000));
+  tft.print(buf);
 }
 
 void ui_poweroff() {
@@ -232,13 +285,20 @@ void ui_screen_esphome() {
     tft.setTextColor(ST7735_WHITE);
     tft.setTextSize(1);
     tft.setCursor(2, y);
-    if (s.valid) {
+     if (s.valid) {
       tft.print(s.name);
       tft.setCursor(2, y + 12);
       tft.setTextColor(ST7735_GREEN);
       tft.setTextSize(2);
-      snprintf(buf, sizeof(buf), "%s", s.state);
-      tft.print(buf);
+      // Temperature sensor carries a 'C' unit -> draw a proper degree glyph.
+      if (strstr(s.state, "C") && strchr(s.state, '.')) {
+        float v = atof(s.state);
+        if (v != 0.0f || strstr(s.state, "0.")) ui_print_temp(v, "C");
+        else { snprintf(buf, sizeof(buf), "%s", s.state); tft.print(buf); }
+      } else {
+        snprintf(buf, sizeof(buf), "%s", s.state);
+        tft.print(buf);
+      }
     } else {
       tft.print(s.name);
       tft.setCursor(2, y + 12);
@@ -266,8 +326,7 @@ void ui_screen_detail(int h, int m, int s, const Weather &w) {
     tft.setTextColor(ST7735_GREEN);
     tft.setTextSize(3);
     tft.setCursor(36, 76);
-    snprintf(buf, sizeof(buf), "%.1fC", w.temp);
-    tft.print(buf);
+    ui_print_temp(w.temp, "C");
 
     tft.setTextColor(ST7735_WHITE);
     tft.setTextSize(1);
@@ -330,10 +389,13 @@ void ui_draw_weather(const Weather &w) {
   tft.setTextSize(2);
   tft.setCursor(4, 58);
   if (w.valid) {
-    snprintf(buf, sizeof(buf), "%.1fC", w.temp);
-    tft.print(buf);
+    ui_print_temp(w.temp, "C");
   } else {
-    tft.print("--.-C");
+    tft.print("--.-");
+    int cx = tft.getCursorX(), cy = tft.getCursorY();
+    tft.fillCircle(cx + 2, cy + 2, 2, ST7735_GREEN);
+    tft.setCursor(cx + 6, cy);
+    tft.print("C");
   }
 
   tft.setTextSize(1);

@@ -17,3 +17,6 @@ void esphome_begin();
 void esphome_tick();
 const EspHomeState& esphome_state(int i);
 int esphome_count();
+
+// Maps unsupported Unicode glyphs (°, µ, ³, ², en/em dash, …) to safe ASCII.
+void sanitize_ascii(char *s);

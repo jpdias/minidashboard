@@ -9,6 +9,7 @@ static Weather gWeather;
 static Forecast gForecast;
 static String gExtIp = "";
 static bool gUpdated = false;
+static bool gFirstDone = false;
 
 static NetState netState = NET_IDLE;
 static NetTask netTask = TASK_WEATHER;
@@ -28,6 +29,10 @@ String net_extip() { return gExtIp; }
 bool netfsm_updated() {
   if (gUpdated) { gUpdated = false; return true; }
   return false;
+}
+
+bool netfsm_first_done() {
+  return gFirstDone;
 }
 
 void netfsm_begin(unsigned long intervalMs) {
@@ -128,6 +133,7 @@ void netfsm_tick() {
       else {  // finished EXTIP
         netLastCycle = millis();
         gUpdated = true;
+        gFirstDone = true;
         netState = NET_IDLE;
         Serial.println("[NET] cycle complete");
       }

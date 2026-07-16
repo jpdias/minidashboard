@@ -6,6 +6,7 @@ void ui_begin();
 void ui_poweroff();
 void ui_poweron();
 bool ui_is_on();
+void ui_screen_loading(unsigned long waitedMs, unsigned long timeoutMs);
 
 void ui_draw_icon(int code, int cx, int cy, uint16_t color);
 void ui_screen_tag(int idx, int total);

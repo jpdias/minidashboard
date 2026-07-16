@@ -2,12 +2,12 @@
 #include <WiFiClient.h>
 #include <ArduinoJson.h>
 
-// Sensor endpoints exposed by the ESPHome REST API (ordered for display).
+// Sensor endpoints exposed by the ESPHome REST API (friendly-name slugs, URL-encoded in request).
 static const char* EH_IDS[EH_MAX] = {
-  "sensor-ikea_air_quality_pm2_5",
-  "sensor-temperature",
-  "sensor-pressure",
-  "sensor-humidity"
+  "IKEA Air Quality PM2.5",
+  "Temperature",
+  "Pressure",
+  "Humidity"
 };
 
 static EspHomeState gSensors[EH_MAX];
@@ -24,6 +24,26 @@ static const unsigned long EH_INTERVAL = 30000;  // full refresh every 30s
 const EspHomeState& esphome_state(int i) { return gSensors[i]; }
 int esphome_count() { return EH_MAX; }
 
+// Minimal URL-encoder (handles spaces and reserved chars for the friendly-name slugs).
+static String urlencode(const String &s) {
+  String out = "";
+  const char *hex = "0123456789ABCDEF";
+  for (unsigned int i = 0; i < s.length(); i++) {
+    char c = s.charAt(i);
+    if (('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z') ||
+        ('0' <= c && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+      out += c;
+    } else if (c == ' ') {
+      out += "%20";
+    } else {
+      out += '%';
+      out += hex[(c >> 4) & 0xF];
+      out += hex[c & 0xF];
+    }
+  }
+  return out;
+}
+
 void esphome_begin() {
   ehState = EH_IDLE;
   ehLast = 0;
@@ -38,7 +58,7 @@ void esphome_tick() {
     case EH_IDLE:
       if (millis() - ehLast >= EH_INTERVAL) {
         ehHost = cfg.esphome_host;
-        ehUrl = String("/sensor/") + EH_IDS[ehIdx];
+        ehUrl = String("/sensor/") + urlencode(EH_IDS[ehIdx]);
         ehBody = "";
         ehClient.stop();
         ehState = EH_CONN;
@@ -78,12 +98,13 @@ void esphome_tick() {
         int b = j.indexOf('{');
         int e = j.lastIndexOf('}');
         if (b >= 0 && e > b) j = j.substring(b, e + 1);
-        Serial.printf("[EH] body[%s] len=%d: ", EH_IDS[ehIdx], j.length());
-        Serial.println(j);
         DynamicJsonDocument doc(512);
         EspHomeState &s = gSensors[ehIdx];
         if (j.length() && !deserializeJson(doc, j.c_str())) {
-          strncpy(s.name, doc["name"] | "", sizeof(s.name) - 1);
+          // Display name: prefer JSON "name", else the configured friendly slug.
+          const char* nm = doc["name"] | "";
+          if (strlen(nm) == 0) nm = EH_IDS[ehIdx];
+          strncpy(s.name, nm, sizeof(s.name) - 1);
           strncpy(s.state, doc["state"] | "", sizeof(s.state) - 1);
           strncpy(s.uom, doc["uom"] | "", sizeof(s.uom) - 1);
           s.valid = true;

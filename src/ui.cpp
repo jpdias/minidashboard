@@ -12,34 +12,62 @@
 static Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 static bool ui_on = true;
 
-// The built-in GFX font is 7-bit ASCII; common Unicode glyphs (°, µ, ³, ², –, ', …)
-// have no defined bitmap and render as garbage. Map them to safe ASCII equivalents.
+// The built-in GFX font is 7-bit ASCII; common Unicode glyphs have no bitmap and
+// render as garbage. Walk the string UTF-8 aware and map known sequences to ASCII,
+// dropping any other non-ASCII bytes.
+//   µ (0xC2 0xB5) -> u     ³ (0xC2 0xB3) -> 3     ² (0xC2 0xB2) -> 2
+//   ° (0xC2 0xB0) -> space  – — (0xE2 0x80 0x93/94) -> -
 void sanitize_ascii(char *s) {
-  for (char *p = s; *p; p++) {
-    unsigned char c = (unsigned char)*p;
-    switch (c) {
-      case 0xB0: *p = ' '; break;   // ° -> space
-      case 0xB5: *p = 'u'; break;   // µ -> u
-      case 0xB3: *p = '3'; break;   // ³ -> 3
-      case 0xB2: *p = '2'; break;   // ² -> 2
-      case 0x96: case 0x97: *p = '-'; break; // – — -> -
-      case 0x91: case 0x92: case 0x27: *p = '\''; break; // ' ' ->
-      case 0xE2: case 0x80: case 0x85: case 0xA0: *p = ' '; break; // misc UTF-8 -> space
-      default: break;
+  char *r = s, *w = s;
+  while (*r) {
+    unsigned char c = (unsigned char)*r;
+    if (c < 0x80) {
+      *w++ = c; r++;
+    } else if (c == 0xC2 && (unsigned char)r[1] >= 0x80) {
+      unsigned char n = (unsigned char)r[1];
+      if (n == 0xB5) *w++ = 'u';
+      else if (n == 0xB3) *w++ = '3';
+      else if (n == 0xB2) *w++ = '2';
+      else if (n == 0xB0) *w++ = ' ';   // degree -> space (drawn manually elsewhere)
+      else if (n == 0xAE) { *w++ = '(', *w++ = 'R', *w++ = ')'; } // ®
+      else if (n == 0xA9) { *w++ = '(', *w++ = 'C', *w++ = ')'; } // ©
+      r += 2;
+    } else if (c == 0xE2 && (unsigned char)r[1] == 0x80) {
+      unsigned char n = (unsigned char)r[2];
+      if (n == 0x93 || n == 0x94) *w++ = '-';  // – —
+      else if (n == 0x99) { *w++ = '\''; *w++ = '\''; } // "
+      r += 3;
+    } else {
+      r++;  // drop other non-ASCII byte(s)
     }
   }
+  *w = 0;
 }
 
-// Print a temperature value followed by a hand-drawn degree glyph and unit.
+// Print a temperature value followed by a hand-drawn degree glyph and unit,
+// centered within [leftX, leftX+width] and auto-shrinking so it never wraps.
 // Avoids the missing '°' bitmap in the default font.
-static void ui_print_temp(float t, const char *unit, uint16_t col) {
+static void ui_print_temp(float t, const char *unit, uint16_t col, int leftX, int width) {
   char buf[16];
   snprintf(buf, sizeof(buf), "%.1f", t);
+  int size = 3;
+  int numW, unitW, total;
+  for (;;) {
+    tft.setTextSize(size);
+    // Default GFX font: 6px per character at text size (5px glyph + 1px space).
+    numW = (int)strlen(buf) * 6 * size;
+    unitW = (int)strlen(unit) * 6 * size;
+    total = numW + 4 + unitW;          // 4 = degree dot + gap
+    if (total <= width || size <= 1) break;
+    size--;
+  }
+  int y = tft.getCursorY();
+  int startX = leftX + (width - total) / 2;
+  tft.setCursor(startX, y);
   tft.print(buf);
   int cx = tft.getCursorX();
-  int cy = tft.getCursorY();
-  tft.fillCircle(cx + 2, cy + 2, 2, col);  // degree dot
-  tft.setCursor(cx + 6, cy);
+  tft.fillCircle(cx + 1, y + 2, 2, col);   // degree dot
+  tft.setCursor(cx + 4, y);
   tft.print(unit);
 }
 
@@ -301,7 +329,7 @@ void ui_screen_esphome() {
       // Temperature sensor carries a 'C' unit -> draw a proper degree glyph.
       if (strstr(s.state, "C") && strchr(s.state, '.')) {
         float v = atof(s.state);
-        if (v != 0.0f || strstr(s.state, "0.")) ui_print_temp(v, "C", ST7735_GREEN);
+        if (v != 0.0f || strstr(s.state, "0.")) ui_print_temp(v, "C", ST7735_GREEN, 2, 124);
         else { snprintf(buf, sizeof(buf), "%s", s.state); tft.print(buf); }
       } else {
         snprintf(buf, sizeof(buf), "%s", s.state);
@@ -333,8 +361,8 @@ void ui_screen_detail(int h, int m, int s, const Weather &w) {
     char buf[24];
     tft.setTextColor(ST7735_GREEN);
     tft.setTextSize(3);
-    tft.setCursor(36, 76);
-    ui_print_temp(w.temp, "C", ST7735_GREEN);
+    tft.setCursor(0, 76);
+    ui_print_temp(w.temp, "C", ST7735_GREEN, 0, 128);
 
     tft.setTextColor(ST7735_WHITE);
     tft.setTextSize(1);
@@ -397,7 +425,7 @@ void ui_draw_weather(const Weather &w) {
   tft.setTextSize(2);
   tft.setCursor(4, 58);
   if (w.valid) {
-    ui_print_temp(w.temp, "C", ST7735_GREEN);
+    ui_print_temp(w.temp, "C", ST7735_GREEN, 4, 120);
   } else {
     tft.print("--.-");
     int cx = tft.getCursorX(), cy = tft.getCursorY();
@@ -423,10 +451,10 @@ void ui_draw_weather(const Weather &w) {
 }
 
 void ui_draw_metrics(bool metrics, int rssi, String intIp, String extIp, unsigned long uptime) {
-  tft.fillRect(0, 100, 128, 60, ST7735_BLACK);
+  tft.fillRect(0, 100, 128, 46, ST7735_BLACK);
   if (!metrics) return;
 
-  tft.drawFastHLine(0, 100, 128, ST7735_BLUE);
+  tft.drawFastHLine(0, 102, 128, ST7735_BLUE);
   tft.setTextColor(ST7735_MAGENTA);
   tft.setTextSize(1);
   char buf[24];
@@ -435,13 +463,13 @@ void ui_draw_metrics(bool metrics, int rssi, String intIp, String extIp, unsigne
   tft.print("WiFi ");
   for (int i = 0; i < 5; i++) tft.print(i < bars ? "#" : ".");
   tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(2, 120);
+  tft.setCursor(2, 118);
   tft.print("LAN ");
   tft.print(intIp);
-  tft.setCursor(2, 132);
+  tft.setCursor(2, 128);
   tft.print("WAN ");
   tft.print(extIp.length() ? extIp : "-");
-  tft.setCursor(2, 144);
+  tft.setCursor(2, 138);
   unsigned long up = uptime / 1000;
   snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
            up / 3600, (up % 3600) / 60, up % 60);

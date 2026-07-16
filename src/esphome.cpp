@@ -1,3 +1,4 @@
+#include "logbuf.h"
 #include "esphome.h"
 #include <WiFiClient.h>
 #include <ArduinoJson.h>
@@ -79,7 +80,7 @@ void esphome_tick() {
         ehState = EH_WAIT;
         ehTimer = millis();
       } else if (millis() - ehTimer > 4000) {
-        Serial.printf("[EH] connect fail %s\n", EH_IDS[ehIdx]);
+        mlog.printf("[EH] connect fail %s\n", EH_IDS[ehIdx]);
         ehState = EH_NEXT;
       }
       break;
@@ -87,7 +88,7 @@ void esphome_tick() {
     case EH_WAIT:
       if (ehClient.available()) { ehState = EH_READ; ehTimer = millis(); }
       else if (millis() - ehTimer > 5000) {
-        Serial.printf("[EH] timeout %s\n", EH_IDS[ehIdx]);
+        mlog.printf("[EH] timeout %s\n", EH_IDS[ehIdx]);
         ehState = EH_NEXT;
       }
       break;
@@ -114,14 +115,14 @@ void esphome_tick() {
           sanitize_ascii(s.state);
           sanitize_ascii(s.uom);
           s.valid = true;
-          Serial.printf("[EH] %s = %s %s\n", s.name, s.state, s.uom);
+          mlog.printf("[EH] %s = %s %s\n", s.name, s.state, s.uom);
         } else {
           s.valid = false;
-          Serial.printf("[EH] parse error %s\n", EH_IDS[ehIdx]);
+          mlog.printf("[EH] parse error %s\n", EH_IDS[ehIdx]);
         }
         ehState = EH_NEXT;
       } else if (millis() - ehTimer > 6000) {
-        Serial.printf("[EH] read stall %s\n", EH_IDS[ehIdx]);
+        mlog.printf("[EH] read stall %s\n", EH_IDS[ehIdx]);
         ehClient.stop();
         ehState = EH_NEXT;
       }

@@ -1,3 +1,4 @@
+#include "logbuf.h"
 #include "portal.h"
 #include <ESP8266WebServer.h>
 
@@ -49,7 +50,27 @@ static void handle_root() {
                 "ESPHome host (e.g. ikea-hack.lan):<br><input name=\"eh\" value=\"" + htmlEscape(cfg.esphome_host) + "\" style=\"width:100%\"><br><br>"
                 "Monitors (comma separated):<br><input name=\"mon\" value=\"" + mon + "\" style=\"width:100%\"><br><br>"
                 "<button type=\"submit\">Save &amp; Reboot</button>"
-                "</form><hr><p>Device: " + WiFi.localIP().toString() + "</p></body></html>";
+                "</form><hr><p>Device: " + WiFi.localIP().toString() +
+                " &middot; <a href=\"/log\">Live log</a></p></body></html>";
+  server.send(200, "text/html", html);
+}
+
+// Live serial terminal, like ESPHome devices expose. Auto-refreshes.
+static void handle_log() {
+  char* buf = logbuf_copy();
+  String body = buf ? String(buf) : String("(empty)");
+  delete[] buf;
+  // escape HTML
+  body.replace("&", "&amp;");
+  body.replace("<", "&lt;");
+  body.replace(">", "&gt;");
+  String html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+                "<title>miniTV Log</title>"
+                "<meta http-equiv=\"refresh\" content=\"2\">"
+                "<style>body{background:#111;color:#0f0;font:12px monospace;white-space:pre-wrap;padding:8px}</style>"
+                "</head><body>";
+  html += body;
+  html += "\n\n<a href=\"/\" style=\"color:#0ff\">back</a></body></html>";
   server.send(200, "text/html", html);
 }
 
@@ -122,7 +143,7 @@ void portal_begin() {
 
   bool res = wm.autoConnect("miniTV-Setup", "minitvpass");
   if (!res) {
-    Serial.println("Failed to connect, restarting");
+    mlog.println("Failed to connect, restarting");
     ESP.restart();
   }
 
@@ -156,8 +177,9 @@ void portal_begin() {
   // Always-on admin web UI (station mode)
   server.on("/", handle_root);
   server.on("/save", HTTP_POST, handle_save);
+  server.on("/log", handle_log);
   server.begin();
-  Serial.println("[PORTAL] admin UI started at http://" + WiFi.localIP().toString());
+  mlog.println("[PORTAL] admin UI started at http://" + WiFi.localIP().toString());
 }
 
 void portal_handle() {

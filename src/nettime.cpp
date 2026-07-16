@@ -1,3 +1,4 @@
+#include "logbuf.h"
 #include "nettime.h"
 #include "config.h"
 #include <ESP8266WiFi.h>
@@ -64,27 +65,27 @@ static String json_only(const String &body) {
 
 bool parse_weather_body(const String &body, Weather &w) {
   String json = json_only(body);
-  if (json.length() == 0) { Serial.println("[WX] no JSON object"); return false; }
+  if (json.length() == 0) { mlog.println("[WX] no JSON object"); return false; }
   DynamicJsonDocument doc(2048);
-  if (deserializeJson(doc, json.c_str())) { Serial.println("[WX] JSON parse error"); return false; }
+  if (deserializeJson(doc, json.c_str())) { mlog.println("[WX] JSON parse error"); return false; }
   JsonObject cur = doc["current"];
-  if (!cur) { Serial.println("[WX] no 'current'"); return false; }
+  if (!cur) { mlog.println("[WX] no 'current'"); return false; }
   w.temp = cur["temperature_2m"].as<float>();
   w.humidity = cur["relative_humidity_2m"].as<int>();
   w.code = cur["weather_code"].as<int>();
   strncpy(w.desc, weather_icon(w.code), sizeof(w.desc) - 1);
   w.valid = true;
-  Serial.printf("[WX] OK temp=%.1f hum=%d code=%d (%s)\n", w.temp, w.humidity, w.code, w.desc);
+  mlog.printf("[WX] OK temp=%.1f hum=%d code=%d (%s)\n", w.temp, w.humidity, w.code, w.desc);
   return true;
 }
 
 bool parse_forecast_body(const String &body, Forecast &f) {
   String json = json_only(body);
-  if (json.length() == 0) { Serial.println("[FC] no JSON"); return false; }
+  if (json.length() == 0) { mlog.println("[FC] no JSON"); return false; }
   DynamicJsonDocument doc(4096);
-  if (deserializeJson(doc, json.c_str())) { Serial.println("[FC] parse error"); return false; }
+  if (deserializeJson(doc, json.c_str())) { mlog.println("[FC] parse error"); return false; }
   JsonObject d = doc["daily"];
-  if (!d) { Serial.println("[FC] no daily"); return false; }
+  if (!d) { mlog.println("[FC] no daily"); return false; }
   JsonArray code = d["weather_code"];
   JsonArray tmax = d["temperature_2m_max"];
   JsonArray tmin = d["temperature_2m_min"];
@@ -96,19 +97,19 @@ bool parse_forecast_body(const String &body, Forecast &f) {
     f.days[i].valid = true;
   }
   f.valid = (n > 0);
-  Serial.printf("[FC] got %d days\n", n);
+  mlog.printf("[FC] got %d days\n", n);
   return true;
 }
 
 bool parse_extip_body(const String &body, String &ip) {
   String json = json_only(body);
-  if (json.length() == 0) { Serial.println("[IP] no JSON"); return false; }
+  if (json.length() == 0) { mlog.println("[IP] no JSON"); return false; }
   DynamicJsonDocument doc(512);
-  if (deserializeJson(doc, json.c_str())) { Serial.println("[IP] parse error"); return false; }
+  if (deserializeJson(doc, json.c_str())) { mlog.println("[IP] parse error"); return false; }
   const char* p = doc["ip"] | "";
-  if (strlen(p) < 7 || strchr(p, '.') == NULL) { Serial.printf("[IP] unexpected: '%s'\n", p); return false; }
+  if (strlen(p) < 7 || strchr(p, '.') == NULL) { mlog.printf("[IP] unexpected: '%s'\n", p); return false; }
   ip = p;
-  Serial.printf("[IP] external=%s\n", ip.c_str());
+  mlog.printf("[IP] external=%s\n", ip.c_str());
   return true;
 }
 
@@ -118,11 +119,11 @@ bool weather_fetch(float lat, float lon, Weather &w) {
   String url = "/v1/forecast?latitude=" + String(lat, 4) +
                "&longitude=" + String(lon, 4) +
                "&current=temperature_2m,relative_humidity_2m,weather_code";
-  Serial.printf("[WX] request: http://%s%s\n", host.c_str(), url.c_str());
-  Serial.printf("[WX] lat=%.4f lon=%.4f\n", lat, lon);
+  mlog.printf("[WX] request: http://%s%s\n", host.c_str(), url.c_str());
+  mlog.printf("[WX] lat=%.4f lon=%.4f\n", lat, lon);
   String body;
-  if (!http_get(host.c_str(), url.c_str(), body)) { Serial.println("[WX] request failed"); return false; }
-  Serial.printf("[WX] body len=%d\n", body.length());
+  if (!http_get(host.c_str(), url.c_str(), body)) { mlog.println("[WX] request failed"); return false; }
+  mlog.printf("[WX] body len=%d\n", body.length());
   return parse_weather_body(body, w);
 }
 
@@ -133,9 +134,9 @@ bool forecast_fetch(float lat, float lon, Forecast &f) {
                "&longitude=" + String(lon, 4) +
                "&daily=weather_code,temperature_2m_max,temperature_2m_min" +
                "&forecast_days=4&timezone=auto";
-  Serial.printf("[FC] request: http://%s%s\n", host.c_str(), url.c_str());
+  mlog.printf("[FC] request: http://%s%s\n", host.c_str(), url.c_str());
   String body;
-  if (!http_get(host.c_str(), url.c_str(), body)) { Serial.println("[FC] request failed"); return false; }
+  if (!http_get(host.c_str(), url.c_str(), body)) { mlog.println("[FC] request failed"); return false; }
   return parse_forecast_body(body, f);
 }
 
@@ -143,7 +144,7 @@ String external_ip_fetch() {
   String host = "api.ipify.org";
   String url = "/?format=text";
   String body;
-  if (!http_get(host.c_str(), url.c_str(), body)) { Serial.println("[IP] request failed"); return String(); }
+  if (!http_get(host.c_str(), url.c_str(), body)) { mlog.println("[IP] request failed"); return String(); }
   String ip;
   if (!parse_extip_body(body, ip)) return String();
   return ip;

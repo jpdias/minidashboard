@@ -1,3 +1,4 @@
+#include "logbuf.h"
 #include "netfsm.h"
 #include "config.h"
 #include <WiFiClient.h>
@@ -21,6 +22,7 @@ static String netHost = "";
 static String netUrl = "";
 static String netBody = "";
 static bool netStarted = false;
+static bool netFirst = true;
 
 Weather& net_weather() { return gWeather; }
 Forecast& net_forecast() { return gForecast; }
@@ -40,6 +42,7 @@ void netfsm_begin(unsigned long intervalMs) {
   netLastCycle = 0;        // force immediate first cycle
   netState = NET_IDLE;
   netStarted = false;
+  netFirst = true;
 }
 
 static void net_start_task() {
@@ -64,7 +67,7 @@ static void net_start_task() {
       netUrl = "/json";
       break;
   }
-  Serial.printf("[NET] start %d -> %s%s\n", netTask, netHost.c_str(), netUrl.c_str());
+  mlog.printf("[NET] start %d -> %s%s\n", netTask, netHost.c_str(), netUrl.c_str());
   netState = NET_CONN;
   netTimer = millis();
 }
@@ -74,7 +77,8 @@ void netfsm_tick() {
 
   switch (netState) {
     case NET_IDLE:
-      if (millis() - netLastCycle >= netInterval) {
+      if (netFirst || millis() - netLastCycle >= netInterval) {
+        netFirst = false;
         netTask = TASK_WEATHER;
         net_start_task();
       }
@@ -89,7 +93,7 @@ void netfsm_tick() {
         netState = NET_WAIT;
         netTimer = millis();
       } else if (millis() - netTimer > 4000) {
-        Serial.printf("[NET] connect fail %d\n", netTask);
+        mlog.printf("[NET] connect fail %d\n", netTask);
         netState = NET_NEXT;   // skip this task
       }
       break;
@@ -99,7 +103,7 @@ void netfsm_tick() {
         netState = NET_READ;
         netTimer = millis();
       } else if (millis() - netTimer > 5000) {
-        Serial.printf("[NET] timeout %d\n", netTask);
+        mlog.printf("[NET] timeout %d\n", netTask);
         netState = NET_NEXT;
       }
       break;
@@ -121,7 +125,7 @@ void netfsm_tick() {
         }
         netState = NET_NEXT;
       } else if (millis() - netTimer > 6000) {
-        Serial.printf("[NET] read stall %d\n", netTask);
+        mlog.printf("[NET] read stall %d\n", netTask);
         netClient.stop();
         netState = NET_NEXT;
       }
@@ -135,7 +139,7 @@ void netfsm_tick() {
         gUpdated = true;
         gFirstDone = true;
         netState = NET_IDLE;
-        Serial.println("[NET] cycle complete");
+        mlog.println("[NET] cycle complete");
       }
       if (netState != NET_IDLE) net_start_task();
       break;

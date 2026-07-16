@@ -1,3 +1,4 @@
+#include "logbuf.h"
 #include <Arduino.h>
 #include "config.h"
 #include "portal.h"
@@ -27,7 +28,7 @@ void IRAM_ATTR btn_isr() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("\nBooting miniTV...");
+  mlog.println("\nBooting miniTV...");
 
   config_load();
   portal_begin();          // connect wifi or spawn AP
@@ -47,7 +48,7 @@ void setup() {
   const unsigned long BOOT_TIMEOUT = 20000;
   unsigned long bootStart = millis();
   unsigned long lastLoad = 0;
-  Serial.println("[BOOT] waiting for first data fetch...");
+  mlog.println("[BOOT] waiting for first data fetch...");
   ui_screen_loading(0, BOOT_TIMEOUT);   // draw static frame once
   while (!net_weather().valid && millis() - bootStart < BOOT_TIMEOUT) {
     portal_handle();
@@ -58,8 +59,8 @@ void setup() {
       ui_loading_update(millis() - bootStart, BOOT_TIMEOUT);
     }
   }
-  if (net_weather().valid) Serial.println("[BOOT] weather ready");
-  else Serial.println("[BOOT] timeout, proceeding");
+  if (net_weather().valid) mlog.println("[BOOT] weather ready");
+  else mlog.println("[BOOT] timeout, proceeding");
   delay(400);
 }
 
@@ -101,7 +102,7 @@ void loop() {
     btnToggle = false;
     screenIndex = (screenIndex + 1) % SCREEN_COUNT;
     drawnStatic = false;
-    Serial.printf("[BTN] screen %d/%d\n", screenIndex + 1, SCREEN_COUNT);
+    mlog.printf("[BTN] screen %d/%d\n", screenIndex + 1, SCREEN_COUNT);
   }
 
   int h, m, s, dow, day, mon, yr;
@@ -111,8 +112,8 @@ void loop() {
   if (h != lastAutoHour) {
     lastAutoHour = h;
     bool night = (h >= 23 || h < 7);
-    if (night && screenOn) { screenOn = false; ui_poweroff(); Serial.println("[AUTO] night -> screen OFF"); }
-    else if (!night && !screenOn) { screenOn = true; ui_poweron(); drawnStatic = false; Serial.println("[AUTO] day -> screen ON"); }
+    if (night && screenOn) { screenOn = false; ui_poweroff(); mlog.println("[AUTO] night -> screen OFF"); }
+    else if (!night && !screenOn) { screenOn = true; ui_poweron(); drawnStatic = false; mlog.println("[AUTO] day -> screen ON"); }
   }
 
   // Non-blocking network updates (driven by netfsm_tick)

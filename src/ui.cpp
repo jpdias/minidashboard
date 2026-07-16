@@ -45,7 +45,7 @@ static void ui_print_temp(float t, const char *unit) {
 
 void ui_begin() {
   tft.initR(INITR_BLACKTAB);
-  tft.setRotation(0);
+  tft.setRotation(2);
   tft.fillScreen(ST7735_BLACK);
 }
 
@@ -79,7 +79,7 @@ void ui_poweroff() {
 void ui_poweron() {
   ui_on = true;
   tft.initR(INITR_BLACKTAB);
-  tft.setRotation(0);
+  tft.setRotation(2);
   tft.fillScreen(ST7735_BLACK);
 }
 

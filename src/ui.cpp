@@ -201,10 +201,12 @@ void ui_screen_tag(int idx, int total) {
   snprintf(buf, sizeof(buf), "%d/%d", idx, total);
   tft.fillRect(74, 0, 54, 12, ST7735_BLACK);
   ui_draw_wifi_bars(76, 1);
+  // Time-sync dot between the WiFi bars and the counter.
+  tft.fillCircle(101, 5, 3, time_is_synced() ? ST7735_GREEN : ST7735_RED);
   tft.setTextColor(ST7735_BLUE);
   tft.setTextSize(1);
   // Right-align the counter against the screen edge (each char is 6px).
-  tft.setCursor(126 - (int)strlen(buf) * 6, 2);
+  tft.setCursor(124 - (int)strlen(buf) * 6, 2);
   tft.print(buf);
 }
 
@@ -214,9 +216,7 @@ void ui_draw_clock_static(int h, int m, int dow, int day, int mon, int yr) {
   char buf[20];
   tft.fillRect(0, 0, 128, 52, ST7735_BLACK);
 
-  // Date text is cyan when NTP-synced, red when not (doubles as the sync dot,
-  // so nothing overlaps the date).
-  tft.setTextColor(time_is_synced() ? ST7735_CYAN : ST7735_RED);
+  tft.setTextColor(ST7735_CYAN);
   tft.setTextSize(1);
   tft.setCursor(2, 2);
   // Two-digit year keeps the date compact so it clears the top-bar widgets.

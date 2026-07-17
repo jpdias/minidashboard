@@ -62,7 +62,8 @@ static void ui_print_temp(float t, const char *unit, uint16_t col, int leftX, in
     size--;
   }
   int y = tft.getCursorY();
-  int startX = leftX + (width - total) / 2;
+  // width == 0 -> left-align at leftX; otherwise center within [leftX, leftX+width].
+  int startX = (width == 0) ? leftX : leftX + (width - total) / 2;
   tft.setCursor(startX, y);
   tft.print(buf);
   int cx = tft.getCursorX();
@@ -326,11 +327,17 @@ void ui_screen_esphome() {
       tft.setCursor(2, y + 12);
       tft.setTextColor(ST7735_GREEN);
       tft.setTextSize(2);
-      // Temperature sensor carries a 'C' unit -> draw a proper degree glyph.
+      // Temperature sensor carries a 'C' unit -> draw a proper degree glyph,
+      // left-aligned at size 2 like the other sensors.
       if (strstr(s.state, "C") && strchr(s.state, '.')) {
         float v = atof(s.state);
-        if (v != 0.0f || strstr(s.state, "0.")) ui_print_temp(v, "C", ST7735_GREEN, 2, 124);
-        else { snprintf(buf, sizeof(buf), "%s", s.state); tft.print(buf); }
+        snprintf(buf, sizeof(buf), "%.1f", v);
+        tft.print(buf);
+        int cx = tft.getCursorX();
+        int cy = tft.getCursorY();
+        tft.fillCircle(cx + 2, cy + 2, 2, ST7735_GREEN);   // degree dot
+        tft.setCursor(cx + 6, cy);
+        tft.print("C");
       } else {
         snprintf(buf, sizeof(buf), "%s", s.state);
         tft.print(buf);
@@ -362,7 +369,7 @@ void ui_screen_detail(int h, int m, int s, const Weather &w) {
     tft.setTextColor(ST7735_GREEN);
     tft.setTextSize(3);
     tft.setCursor(0, 76);
-    ui_print_temp(w.temp, "C", ST7735_GREEN, 0, 128);
+    ui_print_temp(w.temp, "C", ST7735_GREEN, 2, 0);
 
     tft.setTextColor(ST7735_WHITE);
     tft.setTextSize(1);

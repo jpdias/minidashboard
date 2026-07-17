@@ -10,6 +10,8 @@
 #define MONITOR_MAX    4
 #define MONITOR_LEN    64
 
+#define ESPHOME_SENSORS_LEN 192
+
 struct Config {
   char wifi_ssid[33] = {0};
   char wifi_pass[65] = {0};
@@ -20,6 +22,11 @@ struct Config {
   bool  show_metrics = true;
   char  monitors[MONITOR_MAX][MONITOR_LEN] = {0};
   char  esphome_host[MONITOR_LEN] = {0};
+  // slug=label pairs, comma separated (e.g. "Temperature=Temp,Humidity=Hum")
+  char  esphome_sensors[ESPHOME_SENSORS_LEN] = "IKEA Air Quality PM2.5=Air,Temperature=Temp,Pressure=Press,Humidity=Hum";
+  int   night_start = 23;         // hour screen turns off
+  int   night_end = 7;            // hour screen turns on
+  int   ntp_interval_min = 60;    // NTP resync period (minutes)
 };
 
 extern Config cfg;

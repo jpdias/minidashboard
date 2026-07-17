@@ -163,6 +163,16 @@ void ui_draw_icon(int code, int cx, int cy, uint16_t color) {
   }
 }
 
+// Small offline marker bottom-left; only drawn when disconnected.
+void ui_wifi_indicator(bool connected) {
+  if (connected) return;
+  tft.fillRect(0, 150, 60, 10, ST7735_BLACK);
+  tft.setTextColor(ST7735_RED);
+  tft.setTextSize(1);
+  tft.setCursor(2, 151);
+  tft.print("offline");
+}
+
 // ---------- Screen indicator ----------
 void ui_screen_tag(int idx, int total) {
   char buf[8];

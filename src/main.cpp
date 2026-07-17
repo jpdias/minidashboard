@@ -98,8 +98,33 @@ void draw_screen(int h, int m, int s, int dow, int day, int mon, int yr) {
   }
 }
 
+void wifi_supervise() {
+  static bool wasConnected = true;
+  static unsigned long lastAttempt = 0;
+  bool connected = (WiFi.status() == WL_CONNECTED);
+
+  if (connected) {
+    if (!wasConnected) { mlog.println("[WIFI] reconnected"); drawnStatic = false; }
+    wasConnected = true;
+    return;
+  }
+  if (wasConnected) {
+    mlog.println("[WIFI] connection lost");
+    wasConnected = false;
+    lastAttempt = 0;
+    drawnStatic = false;
+  }
+  // Retry every 10s (WiFi.reconnect is non-blocking).
+  if (millis() - lastAttempt >= 10000) {
+    lastAttempt = millis();
+    mlog.println("[WIFI] attempting reconnect...");
+    WiFi.reconnect();
+  }
+}
+
 void loop() {
   ESP.wdtFeed();           // keep the watchdog happy; a freeze stops this -> reset
+  wifi_supervise();
   portal_handle();
   time_tick();             // periodic NTP resync / retry
   netfsm_tick();
@@ -139,6 +164,7 @@ void loop() {
 
     if (needRedraw) {
       draw_screen(h, m, s, dow, day, mon, yr);
+      ui_wifi_indicator(WiFi.status() == WL_CONNECTED);
       lastMin = m;
       drawnStatic = true;
     } else if (screenIndex == 0) {

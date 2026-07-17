@@ -26,6 +26,11 @@ void time_update();                 // sync NTP + apply TZ
 void time_now(int &h, int &m, int &s, int &dow, int &day, int &mon, int &yr);
 const char* dow_name(int d);
 
+// Timezone helpers: friendly IANA name <-> POSIX TZ string, and dropdown list.
+const char* tz_to_posix(const char* name);
+int tz_count();
+const char* tz_name_at(int i);
+
 bool weather_fetch(float lat, float lon, Weather &w);
 bool forecast_fetch(float lat, float lon, Forecast &f);
 const char* weather_icon(int code);

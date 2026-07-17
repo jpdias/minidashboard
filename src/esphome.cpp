@@ -75,7 +75,7 @@ void esphome_tick() {
       if (ehClient.connect(ehHost.c_str(), 80)) {
         ehClient.print(String("GET ") + ehUrl + " HTTP/1.0\r\n" +
                         "Host: " + ehHost + "\r\n" +
-                        "User-Agent: miniTV\r\n" +
+                        "User-Agent: miniDash\r\n" +
                         "Connection: close\r\n\r\n");
         ehState = EH_WAIT;
         ehTimer = millis();

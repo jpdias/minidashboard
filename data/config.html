@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-<title>miniTV Config</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>miniDash Config</title>
 <link rel="stylesheet" href="/style.css">
-</head><body><div class="wrap">
-<h1>miniTV</h1>
+</head><body>
+<h1>miniDash</h1>
+<div class="cols">
+<div class="col">
 <h3>Configuration</h3>
 <form method="post" action="/save">
 <label for="ssid">WiFi SSID</label>
@@ -16,8 +18,8 @@
 <input id="lat" name="lat" value="{{LAT}}">
 <label for="lon">Longitude</label>
 <input id="lon" name="lon" value="{{LON}}">
-<label for="tz">Timezone (e.g. Europe/Lisbon)</label>
-<input id="tz" name="tz" value="{{TZ}}">
+<label for="tz">Timezone</label>
+<select id="tz" name="tz">{{TZ_OPTIONS}}</select>
 <label for="wi">Weather refresh (sec, min 60)</label>
 <input id="wi" name="wi" value="{{WI}}">
 <label for="me">Show metrics (0/1)</label>
@@ -29,6 +31,20 @@
 <br><br>
 <button type="submit">Save &amp; Reboot</button>
 </form>
-<hr>
-<p class="foot">Device: {{IP}} &middot; <a href="/log">Live log</a></p>
-</div></body></html>
+<p class="foot">Device: {{IP}}</p>
+</div>
+<div class="col">
+<h3>Live Log</h3>
+<div class="term" id="log">{{LOG}}</div>
+</div>
+</div>
+<script>
+setInterval(function(){
+  fetch('/logtext').then(function(r){return r.text();}).then(function(t){
+    var el=document.getElementById('log');
+    el.textContent=t;
+    el.scrollTop=el.scrollHeight;
+  });
+},2000);
+</script>
+</body></html>

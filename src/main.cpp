@@ -28,7 +28,7 @@ void IRAM_ATTR btn_isr() {
 
 void setup() {
   Serial.begin(115200);
-  mlog.println("\nBooting miniTV...");
+  mlog.println("\nBooting miniDash...");
 
   // Watchdog: HW watchdog auto-resets the chip if the loop freezes and stops
   // feeding it. Enable the software WDT with an explicit timeout as well.

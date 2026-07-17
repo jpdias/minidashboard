@@ -1,5 +1,6 @@
 #include "logbuf.h"
 #include "portal.h"
+#include "nettime.h"
 #include <ESP8266WebServer.h>
 #include <LittleFS.h>
 
@@ -48,31 +49,50 @@ static void handle_style() {
   f.close();
 }
 
+static String tz_options() {
+  String o;
+  for (int i = 0; i < tz_count(); i++) {
+    const char* n = tz_name_at(i);
+    o += "<option value=\"";
+    o += n;
+    o += "\"";
+    if (strcmp(n, cfg.tz) == 0) o += " selected";
+    o += ">";
+    o += n;
+    o += "</option>";
+  }
+  return o;
+}
+
+static String log_text() {
+  char* buf = logbuf_copy();
+  String body = buf ? String(buf) : String("(empty)");
+  delete[] buf;
+  return body;
+}
+
 static void handle_root() {
   String html = loadTemplate("/config.html");
   if (html.length() == 0) { server.send(500, "text/plain", "config.html missing (run uploadfs)"); return; }
-  html.replace("{{SSID}}", htmlEscape(cfg.wifi_ssid));
+  // WiFi credentials set via the WiFiManager AP portal live in the ESP's own
+  // flash, not in cfg. Fall back to the actively-connected SSID.
+  String ssid = strlen(cfg.wifi_ssid) ? String(cfg.wifi_ssid) : WiFi.SSID();
+  html.replace("{{SSID}}", htmlEscape(ssid));
   html.replace("{{LAT}}", String(cfg.lat, 4));
   html.replace("{{LON}}", String(cfg.lon, 4));
-  html.replace("{{TZ}}", htmlEscape(cfg.tz));
+  html.replace("{{TZ_OPTIONS}}", tz_options());
   html.replace("{{WI}}", String(cfg.weather_interval));
   html.replace("{{ME}}", String(cfg.show_metrics ? 1 : 0));
   html.replace("{{EH}}", htmlEscape(cfg.esphome_host));
   html.replace("{{MON}}", htmlEscape(monitors_to_csv()));
   html.replace("{{IP}}", WiFi.localIP().toString());
+  html.replace("{{LOG}}", htmlEscape(log_text()));
   server.send(200, "text/html", html);
 }
 
-// Live serial terminal, like ESPHome devices expose. Auto-refreshes.
-static void handle_log() {
-  char* buf = logbuf_copy();
-  String body = buf ? String(buf) : String("(empty)");
-  delete[] buf;
-  body = htmlEscape(body);
-  String html = loadTemplate("/log.html");
-  if (html.length() == 0) { server.send(500, "text/plain", "log.html missing (run uploadfs)"); return; }
-  html.replace("{{LOG}}", body);
-  server.send(200, "text/html", html);
+// Raw log text for the auto-refreshing panel on the config page.
+static void handle_logtext() {
+  server.send(200, "text/plain", log_text());
 }
 
 static void handle_save() {
@@ -147,11 +167,14 @@ void portal_begin() {
   wm.addParameter(&p_eh);
   wm.addParameter(&p_mon);
 
-  bool res = wm.autoConnect("miniTV-Setup", "minitvpass");
+  bool res = wm.autoConnect("miniDash-Setup", "minidashpass");
   if (!res) {
     mlog.println("Failed to connect, restarting");
     ESP.restart();
   }
+
+  // Persist the connected SSID into cfg so the config page shows it.
+  if (WiFi.SSID().length()) strncpy(cfg.wifi_ssid, WiFi.SSID().c_str(), sizeof(cfg.wifi_ssid) - 1);
 
   // Read back custom parameters
   cfg.lat = String(p_lat.getValue()).toFloat();
@@ -184,7 +207,7 @@ void portal_begin() {
   server.on("/", handle_root);
   server.on("/style.css", handle_style);
   server.on("/save", HTTP_POST, handle_save);
-  server.on("/log", handle_log);
+  server.on("/logtext", handle_logtext);
   server.begin();
   mlog.println("[PORTAL] admin UI started at http://" + WiFi.localIP().toString());
 }

@@ -1,4 +1,4 @@
-# miniTV
+# miniDash
 
 ESP8266 (Wemos D1 mini) + 1.8" ST7735 TFT dashboard firmware.
 
@@ -31,7 +31,7 @@ The web pages (config/log) live in `data/` and are served from LittleFS, so run
 On Windows/WSL, symlink `.pio/build` to a native (non-`/mnt/c`) path to avoid cross-compiler errors.
 
 ## Configure
-First boot opens a `miniTV-Setup` AP (pw `minitvpass`) for WiFi + location.
+First boot opens a `miniDash-Setup` AP (pw `minidashpass`) for WiFi + location.
 After connected, the device serves a config page at its IP (port 80): WiFi, lat/lon, timezone, weather refresh, metrics toggle, ESPHome host, and monitor list. Saving reboots.
 
 Config is stored in EEPROM.

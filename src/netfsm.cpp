@@ -88,7 +88,7 @@ void netfsm_tick() {
       if (netClient.connect(netHost.c_str(), 80)) {
         netClient.print(String("GET ") + netUrl + " HTTP/1.1\r\n" +
                         "Host: " + netHost + "\r\n" +
-                        "User-Agent: miniTV\r\n" +
+                        "User-Agent: miniDash\r\n" +
                         "Connection: close\r\n\r\n");
         netState = NET_WAIT;
         netTimer = millis();

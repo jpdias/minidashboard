@@ -14,14 +14,51 @@ void time_begin() {
   ntp.begin();
 }
 
+// ESP8266 newlib tzset() needs a POSIX TZ string with DST rules, NOT an IANA
+// name like "Europe/Lisbon". Map the friendly names we expose to POSIX here.
+struct TzEntry { const char* name; const char* posix; };
+static const TzEntry TZ_TABLE[] = {
+  {"Europe/Lisbon",   "WET0WEST,M3.5.0/1,M10.5.0"},
+  {"Europe/London",   "GMT0BST,M3.5.0/1,M10.5.0"},
+  {"Europe/Madrid",   "CET-1CEST,M3.5.0,M10.5.0/3"},
+  {"Europe/Paris",    "CET-1CEST,M3.5.0,M10.5.0/3"},
+  {"Europe/Berlin",   "CET-1CEST,M3.5.0,M10.5.0/3"},
+  {"Europe/Rome",     "CET-1CEST,M3.5.0,M10.5.0/3"},
+  {"Europe/Athens",   "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+  {"Europe/Helsinki", "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+  {"America/New_York","EST5EDT,M3.2.0,M11.1.0"},
+  {"America/Chicago", "CST6CDT,M3.2.0,M11.1.0"},
+  {"America/Denver",  "MST7MDT,M3.2.0,M11.1.0"},
+  {"America/Los_Angeles","PST8PDT,M3.2.0,M11.1.0"},
+  {"America/Sao_Paulo","<-03>3"},
+  {"Asia/Tokyo",      "JST-9"},
+  {"Asia/Shanghai",   "CST-8"},
+  {"Asia/Kolkata",    "IST-5:30"},
+  {"Asia/Dubai",      "<+04>-4"},
+  {"Australia/Sydney","AEST-10AEDT,M10.1.0,M4.1.0/3"},
+  {"UTC",             "UTC0"},
+};
+
+const char* tz_to_posix(const char* name) {
+  for (unsigned i = 0; i < sizeof(TZ_TABLE) / sizeof(TZ_TABLE[0]); i++) {
+    if (strcmp(name, TZ_TABLE[i].name) == 0) return TZ_TABLE[i].posix;
+  }
+  return name;  // assume caller already gave a POSIX string
+}
+
+int tz_count() { return sizeof(TZ_TABLE) / sizeof(TZ_TABLE[0]); }
+const char* tz_name_at(int i) { return TZ_TABLE[i].name; }
+
 void time_update() {
   ntp.update();
   // Push NTP epoch into the system clock so time()/localtime() work
   time_t epoch = ntp.getEpochTime();
   timeval tv = { epoch, 0 };
   settimeofday(&tv, nullptr);
-  setenv("TZ", cfg.tz, 1);
+  const char* posix = tz_to_posix(cfg.tz);
+  setenv("TZ", posix, 1);
   tzset();
+  mlog.printf("[TIME] TZ '%s' -> POSIX '%s'\n", cfg.tz, posix);
 }
 
 void time_now(int &h, int &m, int &s, int &dow, int &day, int &mon, int &yr) {
@@ -43,7 +80,7 @@ static bool http_get(const char* host, const char* url, String &body) {
   if (!client.connect(host, 80)) return false;
   client.print(String("GET ") + url + " HTTP/1.1\r\n" +
                "Host: " + host + "\r\n" +
-               "User-Agent: miniTV\r\n" +
+               "User-Agent: miniDash\r\n" +
                "Connection: close\r\n\r\n");
   unsigned long t0 = millis();
   while (!client.available() && millis() - t0 < 5000) yield();
@@ -141,8 +178,8 @@ bool forecast_fetch(float lat, float lon, Forecast &f) {
 }
 
 String external_ip_fetch() {
-  String host = "api.ipify.org";
-  String url = "/?format=text";
+  String host = "ipinfo.io";
+  String url = "/json";
   String body;
   if (!http_get(host.c_str(), url.c_str(), body)) { mlog.println("[IP] request failed"); return String(); }
   String ip;

@@ -24,7 +24,7 @@ bool monitor_reachable(const char* host, int &ms) {
   if (!ok) { ms = -1; return false; }
   // Send a minimal HEAD request
   client.print(String("HEAD / HTTP/1.1\r\nHost: ") + host +
-               "\r\nUser-Agent: miniTV\r\nConnection: close\r\n\r\n");
+               "\r\nUser-Agent: miniDash\r\nConnection: close\r\n\r\n");
   // Wait for any response byte (bounded so we never stall the loop)
   unsigned long tw = millis();
   while (!client.available() && millis() - tw < 800) yield();

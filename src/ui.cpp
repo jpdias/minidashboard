@@ -84,7 +84,7 @@ void ui_screen_loading(unsigned long waitedMs, unsigned long timeoutMs) {
   tft.setTextColor(ST7735_CYAN);
   tft.setTextSize(2);
   tft.setCursor(18, 50);
-  tft.print("miniTV");
+  tft.print("miniDash");
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(1);
   tft.setCursor(14, 78);

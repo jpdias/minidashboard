@@ -185,6 +185,8 @@ void ui_draw_clock_static(int h, int m, int dow, int day, int mon, int yr) {
   tft.setCursor(2, 2);
   snprintf(buf, sizeof(buf), "%s %02d/%02d/%04d", dow_name(dow), day, mon, yr);
   tft.print(buf);
+  // Time-sync indicator dot in the top-right corner.
+  tft.fillCircle(122, 5, 3, time_is_synced() ? ST7735_GREEN : ST7735_RED);
 
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(3);

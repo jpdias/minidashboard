@@ -101,6 +101,7 @@ void draw_screen(int h, int m, int s, int dow, int day, int mon, int yr) {
 void loop() {
   ESP.wdtFeed();           // keep the watchdog happy; a freeze stops this -> reset
   portal_handle();
+  time_tick();             // periodic NTP resync / retry
   netfsm_tick();
   esphome_tick();
   monitors_tick();

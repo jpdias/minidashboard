@@ -23,6 +23,8 @@ struct Forecast {
 
 void time_begin();
 void time_update();                 // sync NTP + apply TZ
+void time_tick();                   // periodic resync / retry (call from loop)
+bool time_is_synced();              // true after first successful NTP sync
 void time_now(int &h, int &m, int &s, int &dow, int &day, int &mon, int &yr);
 const char* dow_name(int d);
 

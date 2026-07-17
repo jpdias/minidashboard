@@ -9,10 +9,15 @@
 
 static WiFiUDP ntpUDP;
 static NTPClient ntp(ntpUDP, "pool.ntp.org", 0, 600000);
+static bool gSynced = false;
+static unsigned long gLastSync = 0;
+static unsigned long gLastAttempt = 0;
 
 void time_begin() {
   ntp.begin();
 }
+
+bool time_is_synced() { return gSynced; }
 
 // ESP8266 newlib tzset() needs a POSIX TZ string with DST rules, NOT an IANA
 // name like "Europe/Lisbon". Map the friendly names we expose to POSIX here.
@@ -50,15 +55,36 @@ int tz_count() { return sizeof(TZ_TABLE) / sizeof(TZ_TABLE[0]); }
 const char* tz_name_at(int i) { return TZ_TABLE[i].name; }
 
 void time_update() {
-  ntp.update();
-  // Push NTP epoch into the system clock so time()/localtime() work
+  bool ok = ntp.forceUpdate();
+  gLastAttempt = millis();
   time_t epoch = ntp.getEpochTime();
-  timeval tv = { epoch, 0 };
-  settimeofday(&tv, nullptr);
+  // Sanity: epoch must be after 2021-01-01 to count as a real sync.
+  if (ok && epoch > 1609459200UL) {
+    timeval tv = { epoch, 0 };
+    settimeofday(&tv, nullptr);
+    gSynced = true;
+    gLastSync = millis();
+    mlog.printf("[TIME] NTP synced epoch=%lu\n", (unsigned long)epoch);
+  } else {
+    mlog.println("[TIME] NTP update failed");
+  }
   const char* posix = tz_to_posix(cfg.tz);
   setenv("TZ", posix, 1);
   tzset();
   mlog.printf("[TIME] TZ '%s' -> POSIX '%s'\n", cfg.tz, posix);
+}
+
+// Periodic resync + retry. Call from loop().
+void time_tick() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  unsigned long now = millis();
+  if (!gSynced) {
+    if (now - gLastAttempt >= 15000) time_update();   // retry every 15s until first sync
+    return;
+  }
+  unsigned long periodMs = (unsigned long)cfg.ntp_interval_min * 60000UL;
+  if (periodMs < 60000UL) periodMs = 60000UL;
+  if (now - gLastSync >= periodMs) time_update();
 }
 
 void time_now(int &h, int &m, int &s, int &dow, int &day, int &mon, int &yr) {

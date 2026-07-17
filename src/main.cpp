@@ -165,6 +165,7 @@ void loop() {
 
   // Non-blocking network updates (driven by netfsm_tick)
   bool dataUpdated = netfsm_updated();
+  bool ehUpdated = esphome_updated();   // consume flag every loop
 
   if (screenOn && ui_is_on()) {
     static int lastMin = -1;
@@ -174,6 +175,7 @@ void loop() {
     bool needRedraw = !drawnStatic;
     if (screenIndex == 0 && m != lastMin) needRedraw = true;
     if (dataUpdated) needRedraw = true;
+    if (ehUpdated && screenIndex == 1) needRedraw = true;   // ESPHome screen live update
 
     if (needRedraw) {
       draw_screen(h, m, s, dow, day, mon, yr);

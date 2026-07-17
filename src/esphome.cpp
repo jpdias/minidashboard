@@ -8,6 +8,7 @@
 static char ehSlug[EH_MAX][48];
 static char ehLabel[EH_MAX][24];
 static int ehCount = 0;
+static bool ehChanged = false;
 
 static EspHomeState gSensors[EH_MAX];
 static HttpFsm http;
@@ -19,6 +20,7 @@ static const unsigned long EH_INTERVAL = 30000;  // full refresh every 30s
 
 const EspHomeState& esphome_state(int i) { return gSensors[i]; }
 int esphome_count() { return ehCount; }
+bool esphome_updated() { bool c = ehChanged; ehChanged = false; return c; }
 
 // Parse "slug=label,slug2=label2" from config into ehSlug/ehLabel.
 static void parse_sensor_config() {
@@ -86,6 +88,8 @@ static void parse_sensor(const String &raw) {
   DynamicJsonDocument doc(512);
   EspHomeState &s = gSensors[ehIdx];
   if (j.length() && !deserializeJson(doc, j.c_str())) {
+    char oldState[sizeof(s.state)]; strncpy(oldState, s.state, sizeof(oldState));
+    bool wasValid = s.valid;
     // Prefer the configured label; fall back to JSON name, then slug.
     const char* nm = ehLabel[ehIdx];
     if (strlen(nm) == 0) nm = doc["name"] | "";
@@ -97,8 +101,10 @@ static void parse_sensor(const String &raw) {
     sanitize_ascii(s.state);
     sanitize_ascii(s.uom);
     s.valid = true;
+    if (!wasValid || strcmp(oldState, s.state) != 0) ehChanged = true;
     mlog.printf("[EH] %s = %s %s\n", s.name, s.state, s.uom);
   } else {
+    if (s.valid) ehChanged = true;
     s.valid = false;
     mlog.printf("[EH] parse error %s\n", ehSlug[ehIdx]);
   }
@@ -138,6 +144,7 @@ void esphome_tick() {
   } else if (http.failed()) {
     mlog.printf("[EH] fetch fail %s\n", ehSlug[ehIdx]);
     http.consume();
+    if (gSensors[ehIdx].valid) ehChanged = true;
     gSensors[ehIdx].valid = false;
     advance();
   }

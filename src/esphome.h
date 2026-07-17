@@ -13,6 +13,7 @@ struct EspHomeState {
 
 void esphome_begin();
 void esphome_tick();
+bool esphome_updated();          // true once after a sensor value changes
 const EspHomeState& esphome_state(int i);
 int esphome_count();
 

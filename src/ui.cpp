@@ -58,7 +58,8 @@ static void ui_print_temp(float t, const char *unit, uint16_t col, int leftX, in
     numW = (int)strlen(buf) * 6 * size;
     unitW = (int)strlen(unit) * 6 * size;
     total = numW + 4 + unitW;          // 4 = degree dot + gap
-    if (total <= width || size <= 1) break;
+    // width == 0 means left-align with no shrink; otherwise shrink to fit width.
+    if (width == 0 || total <= width || size <= 1) break;
     size--;
   }
   int y = tft.getCursorY();
@@ -187,7 +188,7 @@ void ui_draw_clock_static(int h, int m, int dow, int day, int mon, int yr) {
 
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(3);
-  tft.setCursor(0, 16);
+  tft.setCursor(2, 16);
   snprintf(buf, sizeof(buf), "%02d:%02d", h, m);
   tft.print(buf);
 
@@ -368,17 +369,17 @@ void ui_screen_detail(int h, int m, int s, const Weather &w) {
     char buf[24];
     tft.setTextColor(ST7735_GREEN);
     tft.setTextSize(3);
-    tft.setCursor(0, 76);
+    tft.setCursor(2, 76);
     ui_print_temp(w.temp, "C", ST7735_GREEN, 2, 0);
 
     tft.setTextColor(ST7735_WHITE);
     tft.setTextSize(1);
-    tft.setCursor(8, 104);
+    tft.setCursor(2, 104);
     tft.print(w.desc);
-    tft.setCursor(8, 118);
+    tft.setCursor(2, 118);
     snprintf(buf, sizeof(buf), "Humidity %d%%", w.humidity);
     tft.print(buf);
-    tft.setCursor(8, 132);
+    tft.setCursor(2, 132);
     snprintf(buf, sizeof(buf), "Updated %02d:%02d", h, m);
     tft.print(buf);
   } else {
@@ -430,9 +431,9 @@ void ui_draw_weather(const Weather &w) {
 
   tft.setTextColor(ST7735_GREEN);
   tft.setTextSize(2);
-  tft.setCursor(4, 58);
+  tft.setCursor(2, 58);
   if (w.valid) {
-    ui_print_temp(w.temp, "C", ST7735_GREEN, 4, 120);
+    ui_print_temp(w.temp, "C", ST7735_GREEN, 2, 0);
   } else {
     tft.print("--.-");
     int cx = tft.getCursorX(), cy = tft.getCursorY();

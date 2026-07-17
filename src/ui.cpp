@@ -245,42 +245,31 @@ static void draw_plane_icon(int cx, int cy, uint16_t col) {
   tft.drawFastHLine(cx - 1, cy + 4, 3, col);  // tailplane
 }
 
-// Auto-refreshing closest-flight readout in the top-right of the weather block.
+// Auto-refreshing closest-flight readout on a single line at the bottom.
 // Drawn in its own isolated box so it can update without a full-screen redraw.
 void ui_draw_flightinfo(const FlightData &fd) {
-  const int bx = 70, by = 56, bw = 58, bh = 44;
-  tft.fillRect(bx, by, bw, bh, ST7735_BLACK);
-
-  draw_plane_icon(bx + 6, by + 6, ST7735_CYAN);
-  tft.setTextColor(ST7735_CYAN);
-  tft.setTextSize(1);
-  tft.setCursor(bx + 16, by + 2);
-  tft.print("Flights");
+  const int by = 150, bh = 10;
+  tft.fillRect(0, by, 128, bh, ST7735_BLACK);
+  draw_plane_icon(5, by + 4, ST7735_CYAN);
 
   tft.setTextSize(1);
+  tft.setCursor(14, by + 1);
+  char buf[24];
   if (!fd.valid) {
     tft.setTextColor(ST7735_WHITE);
-    tft.setCursor(bx, by + 16);
-    tft.print("...");
+    tft.print("flights...");
     return;
   }
   if (fd.count == 0) {
     tft.setTextColor(ST7735_WHITE);
-    tft.setCursor(bx, by + 16);
-    tft.print("none");
+    tft.print("no flights");
     return;
   }
   const FlightAc &c = fd.ac[0];
-  char buf[16];
   tft.setTextColor(ST7735_YELLOW);
-  tft.setCursor(bx, by + 16);
   tft.print(c.flight[0] ? c.flight : "----");
   tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(bx, by + 26);
-  snprintf(buf, sizeof(buf), "%.0fnm", c.dst);
-  tft.print(buf);
-  tft.setCursor(bx, by + 36);
-  snprintf(buf, sizeof(buf), "%dft", c.alt);
+  snprintf(buf, sizeof(buf), " %.0fnm %dft", c.dst, c.alt);
   tft.print(buf);
 }
 

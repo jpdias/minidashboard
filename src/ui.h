@@ -27,6 +27,7 @@ void ui_screen_detail(int h, int m, int s, const Weather &w);
 void ui_screen_monitors();
 void ui_screen_esphome();
 void ui_screen_flight(const FlightData &fd, int rangeNm);
+void ui_draw_flightinfo(const FlightData &fd);   // closest-flight box on Clock screen
 
 // legacy/combined (still referenced)
 void ui_draw(int h, int m, int s, int dow, int day, int mon, int yr,

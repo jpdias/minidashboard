@@ -238,11 +238,58 @@ void ui_draw_uptime(unsigned long uptime) {
   tft.print(buf);
 }
 
+// Small top-view plane glyph centered on (cx,cy).
+static void draw_plane_icon(int cx, int cy, uint16_t col) {
+  tft.drawFastVLine(cx, cy - 3, 8, col);      // fuselage
+  tft.drawFastHLine(cx - 3, cy, 7, col);      // main wings
+  tft.drawFastHLine(cx - 1, cy + 4, 3, col);  // tailplane
+}
+
+// Auto-refreshing closest-flight readout in the top-right of the weather block.
+// Drawn in its own isolated box so it can update without a full-screen redraw.
+void ui_draw_flightinfo(const FlightData &fd) {
+  const int bx = 70, by = 56, bw = 58, bh = 44;
+  tft.fillRect(bx, by, bw, bh, ST7735_BLACK);
+
+  draw_plane_icon(bx + 6, by + 6, ST7735_CYAN);
+  tft.setTextColor(ST7735_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(bx + 16, by + 2);
+  tft.print("Flights");
+
+  tft.setTextSize(1);
+  if (!fd.valid) {
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(bx, by + 16);
+    tft.print("...");
+    return;
+  }
+  if (fd.count == 0) {
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(bx, by + 16);
+    tft.print("none");
+    return;
+  }
+  const FlightAc &c = fd.ac[0];
+  char buf[16];
+  tft.setTextColor(ST7735_YELLOW);
+  tft.setCursor(bx, by + 16);
+  tft.print(c.flight[0] ? c.flight : "----");
+  tft.setTextColor(ST7735_WHITE);
+  tft.setCursor(bx, by + 26);
+  snprintf(buf, sizeof(buf), "%.0fnm", c.dst);
+  tft.print(buf);
+  tft.setCursor(bx, by + 36);
+  snprintf(buf, sizeof(buf), "%dft", c.alt);
+  tft.print(buf);
+}
+
 void ui_screen_clock(int h, int m, int s, int dow, int day, int mon, int yr,
                      const Weather &w, bool metrics, int rssi, String intIp, String extIp, unsigned long uptime) {
   ui_draw_clock_static(h, m, dow, day, mon, yr);
   ui_draw_seconds(s);
   ui_draw_weather(w);
+  ui_draw_flightinfo(flight_data());
   ui_draw_metrics(metrics, rssi, intIp, extIp, uptime);
   ui_screen_tag(1, 7);
 }

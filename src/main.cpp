@@ -209,6 +209,8 @@ void loop() {
         ui_draw_seconds(s);
         ui_draw_uptime(millis());
       }
+      // Refresh only the flight box when new flight data arrives (no full redraw).
+      if (flUpdated) ui_draw_flightinfo(flight_data());
     }
   }
 

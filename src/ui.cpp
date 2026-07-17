@@ -226,10 +226,12 @@ void ui_draw_seconds(int s) {
 
 void ui_draw_uptime(unsigned long uptime) {
   char buf[16];
-  tft.fillRect(0, 138, 128, 16, ST7735_BLACK);
+  // Must match the uptime position drawn by ui_draw_metrics (y=138) so the
+  // per-second tick and full redraws don't disagree and cause a vertical jump.
+  tft.fillRect(0, 138, 128, 10, ST7735_BLACK);
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(1);
-  tft.setCursor(2, 144);
+  tft.setCursor(2, 138);
   unsigned long up = uptime / 1000;
   snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
            up / 3600, (up % 3600) / 60, up % 60);

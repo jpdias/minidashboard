@@ -212,7 +212,7 @@ void ui_screen_tag(int idx, int total) {
 // HH:MM fills the width (size 3), :SS at far right (size 2) on the same line.
 void ui_draw_clock_static(int h, int m, int dow, int day, int mon, int yr) {
   char buf[20];
-  tft.fillRect(0, 0, 128, 50, ST7735_BLACK);
+  tft.fillRect(0, 0, 128, 52, ST7735_BLACK);
 
   // Date text is cyan when NTP-synced, red when not (doubles as the sync dot,
   // so nothing overlaps the date).

@@ -1,10 +1,10 @@
 #include "logbuf.h"
 #include "netfsm.h"
 #include "config.h"
-#include <WiFiClient.h>
+#include "httpfsm.h"
+#include <ESP8266WiFi.h>
 
-enum NetState { NET_IDLE, NET_CONN, NET_WAIT, NET_READ, NET_NEXT };
-enum NetTask  { TASK_WEATHER, TASK_FORECAST, TASK_EXTIP };
+enum NetTask { TASK_WEATHER, TASK_FORECAST, TASK_EXTIP };
 
 static Weather gWeather;
 static Forecast gForecast;
@@ -12,17 +12,12 @@ static String gExtIp = "";
 static bool gUpdated = false;
 static bool gFirstDone = false;
 
-static NetState netState = NET_IDLE;
+static HttpFsm http;
 static NetTask netTask = TASK_WEATHER;
 static unsigned long netInterval = 600000;
 static unsigned long netLastCycle = 0;
-static unsigned long netTimer = 0;
-static WiFiClient netClient;
-static String netHost = "";
-static String netUrl = "";
-static String netBody = "";
-static bool netStarted = false;
 static bool netFirst = true;
+static bool netActive = false;
 
 Weather& net_weather() { return gWeather; }
 Forecast& net_forecast() { return gForecast; }
@@ -33,115 +28,84 @@ bool netfsm_updated() {
   return false;
 }
 
-bool netfsm_first_done() {
-  return gFirstDone;
-}
+bool netfsm_first_done() { return gFirstDone; }
 
 void netfsm_begin(unsigned long intervalMs) {
   netInterval = intervalMs;
-  netLastCycle = 0;        // force immediate first cycle
-  netState = NET_IDLE;
-  netStarted = false;
+  netLastCycle = 0;
   netFirst = true;
+  netActive = false;
+  http.consume();
 }
 
-static void net_start_task() {
-  netBody = "";
-  netClient.stop();
-  switch (netTask) {
+static void start_task(NetTask t) {
+  String host, url;
+  switch (t) {
     case TASK_WEATHER:
-      netHost = "api.open-meteo.com";
-      netUrl = "/v1/forecast?latitude=" + String(cfg.lat, 4) +
-               "&longitude=" + String(cfg.lon, 4) +
-               "&current=temperature_2m,relative_humidity_2m,weather_code";
+      host = "api.open-meteo.com";
+      url = "/v1/forecast?latitude=" + String(cfg.lat, 4) +
+            "&longitude=" + String(cfg.lon, 4) +
+            "&current=temperature_2m,relative_humidity_2m,weather_code";
       break;
     case TASK_FORECAST:
-      netHost = "api.open-meteo.com";
-      netUrl = "/v1/forecast?latitude=" + String(cfg.lat, 4) +
-               "&longitude=" + String(cfg.lon, 4) +
-               "&daily=weather_code,temperature_2m_max,temperature_2m_min" +
-               "&forecast_days=4&timezone=auto";
+      host = "api.open-meteo.com";
+      url = "/v1/forecast?latitude=" + String(cfg.lat, 4) +
+            "&longitude=" + String(cfg.lon, 4) +
+            "&daily=weather_code,temperature_2m_max,temperature_2m_min" +
+            "&forecast_days=4&timezone=auto";
       break;
     case TASK_EXTIP:
-      netHost = "ipinfo.io";
-      netUrl = "/json";
+      host = "ipinfo.io";
+      url = "/json";
       break;
   }
-  mlog.printf("[NET] start %d -> %s%s\n", netTask, netHost.c_str(), netUrl.c_str());
-  netState = NET_CONN;
-  netTimer = millis();
+  mlog.printf("[NET] start %d -> %s%s\n", t, host.c_str(), url.c_str());
+  http.begin(host, url);
+}
+
+static void finish_task(NetTask t, const String &raw) {
+  if (t == TASK_WEATHER) { parse_weather_body(raw, gWeather); gUpdated = true; }
+  else if (t == TASK_FORECAST) { parse_forecast_body(raw, gForecast); gUpdated = true; }
+  else if (t == TASK_EXTIP) {
+    String ip;
+    if (parse_extip_body(raw, ip) && ip.length()) gExtIp = ip;
+    gUpdated = true;
+  }
+}
+
+static void next_task() {
+  if (netTask == TASK_WEATHER) { netTask = TASK_FORECAST; start_task(netTask); }
+  else if (netTask == TASK_FORECAST) { netTask = TASK_EXTIP; start_task(netTask); }
+  else {
+    netLastCycle = millis();
+    gUpdated = true;
+    gFirstDone = true;
+    netActive = false;
+    mlog.println("[NET] cycle complete");
+  }
 }
 
 void netfsm_tick() {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  switch (netState) {
-    case NET_IDLE:
-      if (netFirst || millis() - netLastCycle >= netInterval) {
-        netFirst = false;
-        netTask = TASK_WEATHER;
-        net_start_task();
-      }
-      break;
+  if (!netActive) {
+    if (netFirst || millis() - netLastCycle >= netInterval) {
+      netFirst = false;
+      netActive = true;
+      netTask = TASK_WEATHER;
+      start_task(netTask);
+    }
+    return;
+  }
 
-    case NET_CONN:
-      if (netClient.connect(netHost.c_str(), 80)) {
-        netClient.print(String("GET ") + netUrl + " HTTP/1.1\r\n" +
-                        "Host: " + netHost + "\r\n" +
-                        "User-Agent: miniDash\r\n" +
-                        "Connection: close\r\n\r\n");
-        netState = NET_WAIT;
-        netTimer = millis();
-      } else if (millis() - netTimer > 4000) {
-        mlog.printf("[NET] connect fail %d\n", netTask);
-        netState = NET_NEXT;   // skip this task
-      }
-      break;
-
-    case NET_WAIT:
-      if (netClient.available()) {
-        netState = NET_READ;
-        netTimer = millis();
-      } else if (millis() - netTimer > 5000) {
-        mlog.printf("[NET] timeout %d\n", netTask);
-        netState = NET_NEXT;
-      }
-      break;
-
-    case NET_READ:
-      // Accumulate non-blocking
-      while (netClient.available()) {
-        netBody += (char)netClient.read();
-      }
-      if (!netClient.connected() && !netClient.available()) {
-        netClient.stop();
-        // Parse based on task
-        if (netTask == TASK_WEATHER)      { parse_weather_body(netBody, gWeather); gUpdated = true; }
-        else if (netTask == TASK_FORECAST) { parse_forecast_body(netBody, gForecast); gUpdated = true; }
-        else if (netTask == TASK_EXTIP) {
-          String ip;
-          if (parse_extip_body(netBody, ip) && ip.length()) gExtIp = ip;
-          gUpdated = true;
-        }
-        netState = NET_NEXT;
-      } else if (millis() - netTimer > 6000) {
-        mlog.printf("[NET] read stall %d\n", netTask);
-        netClient.stop();
-        netState = NET_NEXT;
-      }
-      break;
-
-    case NET_NEXT:
-      if (netTask == TASK_WEATHER) netTask = TASK_FORECAST;
-      else if (netTask == TASK_FORECAST) netTask = TASK_EXTIP;
-      else {  // finished EXTIP
-        netLastCycle = millis();
-        gUpdated = true;
-        gFirstDone = true;
-        netState = NET_IDLE;
-        mlog.println("[NET] cycle complete");
-      }
-      if (netState != NET_IDLE) net_start_task();
-      break;
+  http.tick();
+  if (http.done()) {
+    String raw = http.body();
+    http.consume();
+    finish_task(netTask, raw);
+    next_task();
+  } else if (http.failed()) {
+    http.consume();
+    next_task();   // skip failed task, keep cycle moving
   }
 }

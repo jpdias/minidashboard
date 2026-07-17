@@ -4,8 +4,6 @@
 
 #define EH_MAX 4
 
-enum EhState { EH_IDLE, EH_CONN, EH_WAIT, EH_READ, EH_NEXT };
-
 struct EspHomeState {
   char name[24] = {0};
   char state[16] = {0};

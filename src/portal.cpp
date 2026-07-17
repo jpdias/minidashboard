@@ -85,7 +85,11 @@ static void handle_root() {
   html.replace("{{TZ_OPTIONS}}", tz_options());
   html.replace("{{WI}}", String(cfg.weather_interval));
   html.replace("{{ME}}", String(cfg.show_metrics ? 1 : 0));
+  html.replace("{{NS}}", String(cfg.night_start));
+  html.replace("{{NE}}", String(cfg.night_end));
+  html.replace("{{NI}}", String(cfg.ntp_interval_min));
   html.replace("{{EH}}", htmlEscape(cfg.esphome_host));
+  html.replace("{{EHS}}", htmlEscape(cfg.esphome_sensors));
   html.replace("{{MON}}", htmlEscape(monitors_to_csv()));
   html.replace("{{IP}}", WiFi.localIP().toString());
   html.replace("{{LOG}}", htmlEscape(log_text()));
@@ -111,7 +115,11 @@ static void handle_save() {
     if (wi >= 60) cfg.weather_interval = wi;
   }
   if (server.hasArg("me")) cfg.show_metrics = (server.arg("me").toInt() != 0);
+  if (server.hasArg("ns")) cfg.night_start = constrain(server.arg("ns").toInt(), 0, 23);
+  if (server.hasArg("ne")) cfg.night_end = constrain(server.arg("ne").toInt(), 0, 23);
+  if (server.hasArg("ni")) { int ni = server.arg("ni").toInt(); if (ni >= 1) cfg.ntp_interval_min = ni; }
   if (server.hasArg("eh")) strncpy(cfg.esphome_host, server.arg("eh").c_str(), sizeof(cfg.esphome_host) - 1);
+  if (server.hasArg("ehs")) strncpy(cfg.esphome_sensors, server.arg("ehs").c_str(), sizeof(cfg.esphome_sensors) - 1);
   if (server.hasArg("mon")) {
     String m = server.arg("mon");
     m.replace(" ", "");

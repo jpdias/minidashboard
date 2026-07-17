@@ -142,10 +142,13 @@ void loop() {
   int h, m, s, dow, day, mon, yr;
   time_now(h, m, s, dow, day, mon, yr);
 
-  // --- Auto night sleep (23:00 - 07:00) ---
+  // --- Auto night sleep (configurable hours) ---
   if (h != lastAutoHour) {
     lastAutoHour = h;
-    bool night = (h >= 23 || h < 7);
+    int ns = cfg.night_start, ne = cfg.night_end;
+    bool night = (ns == ne) ? false
+               : (ns < ne)  ? (h >= ns && h < ne)          // same-day window
+                            : (h >= ns || h < ne);          // wraps midnight
     if (night && screenOn) { screenOn = false; ui_poweroff(); mlog.println("[AUTO] night -> screen OFF"); }
     else if (!night && !screenOn) { screenOn = true; ui_poweron(); drawnStatic = false; mlog.println("[AUTO] day -> screen ON"); }
   }

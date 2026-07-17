@@ -4,13 +4,10 @@
 #include <ESP8266WiFi.h>
 #include <ArduinoJson.h>
 
-// Sensor endpoints exposed by the ESPHome REST API (friendly-name slugs, URL-encoded in request).
-static const char* EH_IDS[EH_MAX] = {
-  "IKEA Air Quality PM2.5",
-  "Temperature",
-  "Pressure",
-  "Humidity"
-};
+// Sensor slug + display label, parsed from cfg.esphome_sensors ("slug=label,...").
+static char ehSlug[EH_MAX][48];
+static char ehLabel[EH_MAX][24];
+static int ehCount = 0;
 
 static EspHomeState gSensors[EH_MAX];
 static HttpFsm http;
@@ -21,7 +18,33 @@ static int ehIdx = 0;
 static const unsigned long EH_INTERVAL = 30000;  // full refresh every 30s
 
 const EspHomeState& esphome_state(int i) { return gSensors[i]; }
-int esphome_count() { return EH_MAX; }
+int esphome_count() { return ehCount; }
+
+// Parse "slug=label,slug2=label2" from config into ehSlug/ehLabel.
+static void parse_sensor_config() {
+  ehCount = 0;
+  String cfgStr = cfg.esphome_sensors;
+  int start = 0;
+  while (start < (int)cfgStr.length() && ehCount < EH_MAX) {
+    int comma = cfgStr.indexOf(',', start);
+    if (comma < 0) comma = cfgStr.length();
+    String pair = cfgStr.substring(start, comma);
+    pair.trim();
+    start = comma + 1;
+    if (pair.length() == 0) continue;
+    int eq = pair.indexOf('=');
+    String slug = (eq >= 0) ? pair.substring(0, eq) : pair;
+    String label = (eq >= 0) ? pair.substring(eq + 1) : pair;
+    slug.trim(); label.trim();
+    if (slug.length() == 0) continue;
+    strncpy(ehSlug[ehCount], slug.c_str(), sizeof(ehSlug[0]) - 1);
+    ehSlug[ehCount][sizeof(ehSlug[0]) - 1] = 0;
+    strncpy(ehLabel[ehCount], label.c_str(), sizeof(ehLabel[0]) - 1);
+    ehLabel[ehCount][sizeof(ehLabel[0]) - 1] = 0;
+    ehCount++;
+  }
+  mlog.printf("[EH] configured %d sensors\n", ehCount);
+}
 
 // Minimal URL-encoder (handles spaces and reserved chars for the friendly-name slugs).
 static String urlencode(const String &s) {
@@ -44,6 +67,7 @@ static String urlencode(const String &s) {
 }
 
 void esphome_begin() {
+  parse_sensor_config();
   ehLast = 0;
   ehFirst = true;
   ehActive = false;
@@ -52,7 +76,7 @@ void esphome_begin() {
 }
 
 static void start_sensor() {
-  String url = String("/sensor/") + urlencode(EH_IDS[ehIdx]);
+  String url = String("/sensor/") + urlencode(ehSlug[ehIdx]);
   http.connectTimeout = 4000;
   http.begin(String(cfg.esphome_host), url);
 }
@@ -62,8 +86,10 @@ static void parse_sensor(const String &raw) {
   DynamicJsonDocument doc(512);
   EspHomeState &s = gSensors[ehIdx];
   if (j.length() && !deserializeJson(doc, j.c_str())) {
-    const char* nm = doc["name"] | "";
-    if (strlen(nm) == 0) nm = EH_IDS[ehIdx];
+    // Prefer the configured label; fall back to JSON name, then slug.
+    const char* nm = ehLabel[ehIdx];
+    if (strlen(nm) == 0) nm = doc["name"] | "";
+    if (strlen(nm) == 0) nm = ehSlug[ehIdx];
     strncpy(s.name, nm, sizeof(s.name) - 1);
     strncpy(s.state, doc["state"] | "", sizeof(s.state) - 1);
     strncpy(s.uom, doc["uom"] | "", sizeof(s.uom) - 1);
@@ -74,13 +100,13 @@ static void parse_sensor(const String &raw) {
     mlog.printf("[EH] %s = %s %s\n", s.name, s.state, s.uom);
   } else {
     s.valid = false;
-    mlog.printf("[EH] parse error %s\n", EH_IDS[ehIdx]);
+    mlog.printf("[EH] parse error %s\n", ehSlug[ehIdx]);
   }
 }
 
 static void advance() {
   ehIdx++;
-  if (ehIdx >= EH_MAX) {
+  if (ehIdx >= ehCount) {
     ehIdx = 0;
     ehLast = millis();
     ehActive = false;
@@ -91,7 +117,7 @@ static void advance() {
 
 void esphome_tick() {
   if (WiFi.status() != WL_CONNECTED) return;
-  if (cfg.esphome_host[0] == 0) return;
+  if (cfg.esphome_host[0] == 0 || ehCount == 0) return;
 
   if (!ehActive) {
     if (ehFirst || millis() - ehLast >= EH_INTERVAL) {
@@ -110,7 +136,7 @@ void esphome_tick() {
     parse_sensor(raw);
     advance();
   } else if (http.failed()) {
-    mlog.printf("[EH] fetch fail %s\n", EH_IDS[ehIdx]);
+    mlog.printf("[EH] fetch fail %s\n", ehSlug[ehIdx]);
     http.consume();
     gSensors[ehIdx].valid = false;
     advance();

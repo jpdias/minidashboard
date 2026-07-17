@@ -7,18 +7,17 @@
 
 static const char* FL_HOST = "opendata.adsb.fi";
 static const uint16_t FL_PORT = 443;
-static const unsigned long FL_INTERVAL = 5000;   // 5s refresh
-static const size_t FL_MAX_BYTES = 12000;        // hard cap on response we buffer
+static const unsigned long FL_INTERVAL = 15000;  // 15s refresh (TLS is heap-heavy)
+static const uint32_t FL_MIN_HEAP = 22000;       // skip fetch if heap too low for TLS+JSON
 
 static FlightData gData;
 static bool gUpdated = false;
 
-// One BearSSL client, created per-fetch to release its ~16-22KB buffers between
-// requests. Non-blocking phases keep the main loop (and clock) alive.
+// One BearSSL client, created per-fetch to release its buffers between requests.
+// Non-blocking phases keep the main loop (and clock) alive.
 static BearSSL::WiFiClientSecure *cli = nullptr;
-static String buf;
 
-enum Phase { P_IDLE, P_CONN, P_WAIT, P_READ };
+enum Phase { P_IDLE, P_CONN, P_WAIT, P_HDR, P_READ };
 static Phase phase = P_IDLE;
 static unsigned long timer = 0;
 static unsigned long lastCycle = 0;
@@ -41,7 +40,6 @@ void flight_begin() {
 
 static void cleanup() {
   if (cli) { cli->stop(); delete cli; cli = nullptr; }
-  buf = "";
 }
 
 static void fail(const char *why) {
@@ -66,12 +64,9 @@ static int insert_sorted(FlightAc *arr, int n, const FlightAc &a) {
   return n;
 }
 
-static void parse(const String &raw) {
-  int he = raw.indexOf("\r\n\r\n");
-  String j = (he >= 0) ? raw.substring(he + 4) : raw;
-  int b = j.indexOf('{');
-  if (b > 0) j = j.substring(b);
-
+// Parse straight from the TLS stream so we never buffer the whole body.
+// The filter drops every field we don't need, keeping the working doc tiny.
+static void parse(Stream &s) {
   StaticJsonDocument<160> filter;
   JsonObject fac = filter["aircraft"].createNestedObject();
   fac["flight"] = true;
@@ -80,9 +75,9 @@ static void parse(const String &raw) {
   fac["dst"] = true;
   fac["dir"] = true;
 
-  DynamicJsonDocument doc(6144);
+  DynamicJsonDocument doc(3072);
   DeserializationError err =
-      deserializeJson(doc, j.c_str(), DeserializationOption::Filter(filter));
+      deserializeJson(doc, s, DeserializationOption::Filter(filter));
   if (err) { mlog.printf("[FLT] parse err %s\n", err.c_str()); gData.valid = false; return; }
 
   JsonArray arr = doc["aircraft"];
@@ -107,6 +102,19 @@ static void parse(const String &raw) {
   mlog.printf("[FLT] %d aircraft (showing %d)\n", total, n);
 }
 
+// Non-blocking: consume HTTP response headers up to the blank line. Returns
+// true once the body is reached.
+static bool skip_headers(Stream &s) {
+  static uint8_t match = 0;   // counts progress through "\r\n\r\n"
+  while (s.available()) {
+    char c = (char)s.read();
+    if ((match == 0 || match == 2) && c == '\r') match++;
+    else if ((match == 1 || match == 3) && c == '\n') { match++; if (match == 4) { match = 0; return true; } }
+    else match = 0;
+  }
+  return false;
+}
+
 void flight_tick() {
   if (cfg.flight_range <= 0) return;
   if (WiFi.status() != WL_CONNECTED) return;
@@ -114,12 +122,19 @@ void flight_tick() {
   switch (phase) {
     case P_IDLE:
       if (first || millis() - lastCycle >= FL_INTERVAL) {
+        // Only start if there's enough contiguous heap for TLS + JSON, else
+        // we just get NoMemory. Retry on the next interval.
+        if (ESP.getMaxFreeBlockSize() < FL_MIN_HEAP) {
+          if (first) mlog.println("[FLT] low heap, deferring");
+          lastCycle = millis();
+          return;
+        }
         first = false;
         cli = new BearSSL::WiFiClientSecure();
         if (!cli) { fail("alloc fail"); return; }
         cli->setInsecure();
         cli->setBufferSizes(4096, 512);   // smaller TLS buffers to fit heap
-        buf = "";
+        cli->setTimeout(2000);
         phase = P_CONN;
         timer = millis();
       }
@@ -142,23 +157,26 @@ void flight_tick() {
       break;
 
     case P_WAIT:
-      if (cli->available()) { phase = P_READ; timer = millis(); }
+      if (cli->available()) { phase = P_HDR; timer = millis(); }
+      else if (!cli->connected()) { fail("closed early"); }
       else if (millis() - timer > 6000) fail("wait timeout");
       break;
 
+    case P_HDR:
+      if (skip_headers(*cli)) { phase = P_READ; timer = millis(); }
+      else if (!cli->connected() && !cli->available()) fail("no body");
+      else if (millis() - timer > 6000) fail("header timeout");
+      break;
+
     case P_READ:
-      while (cli->available() && buf.length() < FL_MAX_BYTES) buf += (char)cli->read();
-      if (buf.length() >= FL_MAX_BYTES) {
-        // Truncated: still try to parse what we have (JSON may be incomplete).
-        parse(buf);
+      // Wait for body data before parsing so we never parse an empty stream.
+      if (cli->available()) {
+        parse(*cli);              // streams from the client, stops at closing brace
         cleanup();
         phase = P_IDLE;
         lastCycle = millis();
-      } else if (!cli->connected() && !cli->available()) {
-        parse(buf);
-        cleanup();
-        phase = P_IDLE;
-        lastCycle = millis();
+      } else if (!cli->connected()) {
+        fail("empty body");
       } else if (millis() - timer > 8000) {
         fail("read stall");
       }

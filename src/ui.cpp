@@ -174,11 +174,33 @@ void ui_wifi_indicator(bool connected) {
   tft.print("offline");
 }
 
+// Cellular-style signal bars for WiFi RSSI, drawn in the top bar.
+// 5 ascending bars anchored at the bottom (y+9); filled ones = signal level.
+void ui_draw_wifi_bars(int x, int y) {
+  tft.fillRect(x, y, 20, 10, ST7735_BLACK);
+  bool connected = (WiFi.status() == WL_CONNECTED);
+  int bars = 0;
+  if (connected) {
+    int rssi = WiFi.RSSI();
+    bars = constrain(map(rssi, -90, -50, 1, 5), 1, 5);
+  }
+  for (int i = 0; i < 5; i++) {
+    int bh = 2 + i * 2;              // 2,4,6,8,10 px tall
+    int bx = x + i * 4;
+    int bytop = y + (10 - bh);
+    uint16_t col = (i < bars) ? ST7735_GREEN
+                 : (connected ? tft.color565(0, 60, 0) : ST7735_RED);
+    tft.fillRect(bx, bytop, 3, bh, col);
+  }
+}
+
 // ---------- Screen indicator ----------
+// Also draws the shared WiFi signal bars so they appear on every screen.
 void ui_screen_tag(int idx, int total) {
   char buf[8];
   snprintf(buf, sizeof(buf), "%d/%d", idx, total);
-  tft.fillRect(98, 0, 30, 12, ST7735_BLACK);
+  tft.fillRect(74, 0, 54, 12, ST7735_BLACK);
+  ui_draw_wifi_bars(76, 1);
   tft.setTextColor(ST7735_BLUE);
   tft.setTextSize(1);
   tft.setCursor(100, 2);
@@ -194,10 +216,11 @@ void ui_draw_clock_static(int h, int m, int dow, int day, int mon, int yr) {
   tft.setTextColor(ST7735_CYAN);
   tft.setTextSize(1);
   tft.setCursor(2, 2);
-  snprintf(buf, sizeof(buf), "%s %02d/%02d/%04d", dow_name(dow), day, mon, yr);
+  // Two-digit year keeps the date compact so it clears the top-bar widgets.
+  snprintf(buf, sizeof(buf), "%s %02d/%02d/%02d", dow_name(dow), day, mon, yr % 100);
   tft.print(buf);
-  // Time-sync indicator dot in the top-right corner.
-  tft.fillCircle(122, 5, 3, time_is_synced() ? ST7735_GREEN : ST7735_RED);
+  // Time-sync indicator dot, left of the WiFi bars.
+  tft.fillCircle(68, 5, 3, time_is_synced() ? ST7735_GREEN : ST7735_RED);
 
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(3);
@@ -289,7 +312,7 @@ void ui_screen_forecast(int h, int m, int s, const Forecast &f) {
   tft.setTextColor(ST7735_CYAN);
   tft.setTextSize(1);
   tft.setCursor(2, 2);
-  tft.print("3-Day Forecast");
+  tft.print("Forecast");
   tft.drawFastHLine(0, 14, 128, ST7735_BLUE);
 
   char buf[24];
@@ -490,7 +513,7 @@ void ui_screen_flight(const FlightData &fd, int rangeNm) {
   tft.setTextColor(ST7735_CYAN);
   tft.setTextSize(1);
   tft.setCursor(2, 2);
-  tft.print("Flight Radar");
+  tft.print("Flights");
   tft.drawFastHLine(0, 14, 128, ST7735_BLUE);
 
   const int cx = 64, cy = 82, R = 60;
@@ -604,10 +627,9 @@ void ui_draw_metrics(bool metrics, int rssi, String intIp, String extIp, unsigne
   tft.setTextColor(ST7735_MAGENTA);
   tft.setTextSize(1);
   char buf[24];
-  int bars = constrain(map(rssi, -90, -30, 0, 5), 0, 5);
   tft.setCursor(2, 108);
-  tft.print("WiFi ");
-  for (int i = 0; i < 5; i++) tft.print(i < bars ? "#" : ".");
+  snprintf(buf, sizeof(buf), "WiFi %ddBm", rssi);
+  tft.print(buf);
   tft.setTextColor(ST7735_WHITE);
   tft.setCursor(2, 118);
   tft.print("LAN ");

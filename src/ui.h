@@ -12,6 +12,7 @@ void ui_loading_update(unsigned long waitedMs, unsigned long timeoutMs);
 
 void ui_draw_icon(int code, int cx, int cy, uint16_t color);
 void ui_screen_tag(int idx, int total);
+void ui_draw_wifi_bars(int x, int y);      // cellular-style signal bars
 void ui_wifi_indicator(bool connected);   // small offline marker overlay
 
 void ui_draw_clock_static(int h, int m, int dow, int day, int mon, int yr);

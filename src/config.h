@@ -26,12 +26,12 @@ struct Config {
   char  esphome_host[MONITOR_LEN] = {0};
   // slug=label pairs, comma separated (e.g. "Temperature=Temp,Humidity=Hum")
   char  esphome_sensors[ESPHOME_SENSORS_LEN] = "IKEA Air Quality PM2.5=Air,Temperature=Temp,Pressure=Press,Humidity=Hum";
-  int   night_start = 23;         // hour screen turns off
-  int   night_end = 7;            // hour screen turns on
   int   ntp_interval_min = 60;    // NTP resync period (minutes)
+  int   night_start = 23;         // hour display turns off (== night_end disables)
+  int   night_end = 7;            // hour display turns on
   int   flight_range = 25;        // flight radar range in nm (0 disables screen)
   bool  screen_enabled[SCREEN_MAX] = { true, true, true, true, true, true, true };
-  bool  backlight_control = false;   // drive backlight via transistor on D6/GPIO12
+  bool  backlight_control = true;   // drive backlight via transistor on D8/GPIO15
   bool  backlight_active_high = true;// GPIO level that turns the backlight ON
 };
 

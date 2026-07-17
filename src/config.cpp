@@ -31,7 +31,7 @@ static void apply_defaults() {
 static bool load_json() {
   File f = LittleFS.open(CONFIG_PATH, "r");
   if (!f) return false;
-  DynamicJsonDocument doc(2048);
+  DynamicJsonDocument doc(4096);
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) { mlog.printf("[CFG] json parse error: %s\n", err.c_str()); return false; }
@@ -46,11 +46,11 @@ static bool load_json() {
   cfg.show_metrics = doc["show_metrics"] | true;
   strncpy(cfg.esphome_host, doc["esphome_host"] | "", sizeof(cfg.esphome_host) - 1);
   strncpy(cfg.esphome_sensors, doc["esphome_sensors"] | cfg.esphome_sensors, sizeof(cfg.esphome_sensors) - 1);
+  cfg.ntp_interval_min = doc["ntp_interval_min"] | 60;
   cfg.night_start = doc["night_start"] | 23;
   cfg.night_end = doc["night_end"] | 7;
-  cfg.ntp_interval_min = doc["ntp_interval_min"] | 60;
   cfg.flight_range = doc["flight_range"] | 25;
-  cfg.backlight_control = doc["backlight_control"] | false;
+  cfg.backlight_control = doc["backlight_control"] | true;
   cfg.backlight_active_high = doc["backlight_active_high"] | true;
   JsonArray scr = doc["screens"];
   if (!scr.isNull()) {
@@ -117,7 +117,7 @@ void config_load() {
 }
 
 void config_save() {
-  DynamicJsonDocument doc(2048);
+  DynamicJsonDocument doc(4096);
   doc["wifi_ssid"] = cfg.wifi_ssid;
   doc["wifi_pass"] = cfg.wifi_pass;
   doc["lat"] = cfg.lat;
@@ -128,9 +128,9 @@ void config_save() {
   doc["show_metrics"] = cfg.show_metrics;
   doc["esphome_host"] = cfg.esphome_host;
   doc["esphome_sensors"] = cfg.esphome_sensors;
+  doc["ntp_interval_min"] = cfg.ntp_interval_min;
   doc["night_start"] = cfg.night_start;
   doc["night_end"] = cfg.night_end;
-  doc["ntp_interval_min"] = cfg.ntp_interval_min;
   doc["flight_range"] = cfg.flight_range;
   doc["backlight_control"] = cfg.backlight_control;
   doc["backlight_active_high"] = cfg.backlight_active_high;
@@ -141,11 +141,12 @@ void config_save() {
     if (cfg.monitors[i][0]) mons.add(cfg.monitors[i]);
   }
 
+  if (doc.overflowed()) mlog.println("[CFG] WARN: JSON doc overflowed, data may be truncated");
   File f = LittleFS.open(CONFIG_PATH, "w");
   if (!f) { mlog.println("[CFG] save open failed"); return; }
-  serializeJson(doc, f);
+  size_t n = serializeJson(doc, f);
   f.close();
-  mlog.println("[CFG] saved config.json");
+  mlog.printf("[CFG] saved config.json (%u bytes)\n", (unsigned)n);
 }
 
 void config_reset() {

@@ -1,11 +1,14 @@
 #pragma once
 #include <Arduino.h>
+#include <time.h>
 
 struct Weather {
   float temp = 0.0f;
   int humidity = 0;
   int code = 0;
   char desc[24] = {0};
+  char sunrise[6] = {0};   // "HH:MM" local
+  char sunset[6] = {0};    // "HH:MM" local
   bool valid = false;
 };
 
@@ -27,6 +30,8 @@ void time_tick();                   // periodic resync / retry (call from loop)
 bool time_is_synced();              // true after first successful NTP sync
 void time_now(int &h, int &m, int &s, int &dow, int &day, int &mon, int &yr);
 const char* dow_name(int d);
+time_t time_utc_now();      // current unix time (UTC seconds)
+long time_tz_offset();      // local offset from UTC in seconds (incl. DST)
 
 // Timezone helpers: friendly IANA name <-> POSIX TZ string, and dropdown list.
 const char* tz_to_posix(const char* name);

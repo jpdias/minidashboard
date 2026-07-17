@@ -99,6 +99,18 @@ const char* dow_name(int d) {
   return names[d % 7];
 }
 
+time_t time_utc_now() { return time(nullptr); }
+
+long time_tz_offset() {
+  time_t now = time(nullptr);
+  // gmtime() gives the UTC calendar time; mktime() re-interprets those fields as
+  // LOCAL time, so mktime(gmtime(now)) == now - offset. Hence offset = now - that.
+  struct tm g = *gmtime(&now);
+  g.tm_isdst = -1;
+  time_t asLocal = mktime(&g);
+  return (long)difftime(now, asLocal);
+}
+
 // ---- shared HTTP GET (blocking) used by the simple wrappers ----
 static bool http_get(const char* host, const char* url, String &body) {
   if (WiFi.status() != WL_CONNECTED) return false;
@@ -137,6 +149,15 @@ bool parse_weather_body(const String &body, Weather &w) {
   w.humidity = cur["relative_humidity_2m"].as<int>();
   w.code = cur["weather_code"].as<int>();
   strncpy(w.desc, weather_icon(w.code), sizeof(w.desc) - 1);
+  // Sun times from daily[0]; ISO "YYYY-MM-DDTHH:MM" -> take the "HH:MM" part.
+  w.sunrise[0] = w.sunset[0] = 0;
+  JsonObject d = doc["daily"];
+  if (d) {
+    const char* sr = d["sunrise"][0] | "";
+    const char* ss = d["sunset"][0] | "";
+    if (strlen(sr) >= 16) { strncpy(w.sunrise, sr + 11, 5); w.sunrise[5] = 0; }
+    if (strlen(ss) >= 16) { strncpy(w.sunset, ss + 11, 5); w.sunset[5] = 0; }
+  }
   w.valid = true;
   mlog.printf("[WX] OK temp=%.1f hum=%d code=%d (%s)\n", w.temp, w.humidity, w.code, w.desc);
   return true;
@@ -185,7 +206,8 @@ bool weather_fetch(float lat, float lon, Weather &w) {
   String host = "api.open-meteo.com";
   String url = "/v1/forecast?latitude=" + String(lat, 4) +
                "&longitude=" + String(lon, 4) +
-               "&current=temperature_2m,relative_humidity_2m,weather_code";
+               "&current=temperature_2m,relative_humidity_2m,weather_code" +
+               "&daily=sunrise,sunset&forecast_days=1&timezone=auto";
   mlog.printf("[WX] request: http://%s%s\n", host.c_str(), url.c_str());
   mlog.printf("[WX] lat=%.4f lon=%.4f\n", lat, lon);
   String body;

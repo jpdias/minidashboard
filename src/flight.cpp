@@ -1,6 +1,7 @@
 #include "logbuf.h"
 #include "flight.h"
 #include "config.h"
+#include "tlslock.h"
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
@@ -47,6 +48,7 @@ void flight_begin() {
 
 static void cleanup() {
   if (cli) { cli->stop(); delete cli; cli = nullptr; }
+  tls_release();
 }
 
 static void fail(const char *why) {
@@ -139,8 +141,9 @@ static void parse(Stream &s) {
 
 // Non-blocking: consume HTTP response headers up to the blank line. Returns
 // true once the body is reached.
+static uint8_t hdrMatch = 0;   // progress through "\r\n\r\n"; reset per fetch
 static bool skip_headers(Stream &s) {
-  static uint8_t match = 0;   // counts progress through "\r\n\r\n"
+  uint8_t &match = hdrMatch;
   while (s.available()) {
     char c = (char)s.read();
     if ((match == 0 || match == 2) && c == '\r') match++;
@@ -154,6 +157,10 @@ void flight_tick() {
   if (cfg.flight_range <= 0) return;
   if (WiFi.status() != WL_CONNECTED) return;
 
+  // Global safety: if any active phase runs too long, abort the whole cycle so
+  // the FSM can never get wedged (which shows as a stuck countdown at 0).
+  if (phase != P_IDLE && millis() - timer > 12000) { fail("phase timeout"); return; }
+
   switch (phase) {
     case P_IDLE:
       if (first || millis() - lastCycle >= FL_INTERVAL) {
@@ -163,6 +170,11 @@ void flight_tick() {
           if (first) mlog.println("[FLT] low heap, deferring");
           lastCycle = millis();
           return;
+        }
+        if (!tls_try_acquire()) {
+          static unsigned long lastWarn = 0;
+          if (millis() - lastWarn > 5000) { mlog.println("[FLT] TLS busy, waiting"); lastWarn = millis(); }
+          return;   // moon fetch busy; retry next loop
         }
         first = false;
         cli = new BearSSL::WiFiClientSecure();

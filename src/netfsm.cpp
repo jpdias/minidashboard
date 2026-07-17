@@ -45,7 +45,8 @@ static void start_task(NetTask t) {
       host = "api.open-meteo.com";
       url = "/v1/forecast?latitude=" + String(cfg.lat, 4) +
             "&longitude=" + String(cfg.lon, 4) +
-            "&current=temperature_2m,relative_humidity_2m,weather_code";
+            "&current=temperature_2m,relative_humidity_2m,weather_code" +
+            "&daily=sunrise,sunset&forecast_days=1&timezone=auto";
       break;
     case TASK_FORECAST:
       host = "api.open-meteo.com";

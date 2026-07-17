@@ -1,6 +1,9 @@
 #include "ui.h"
 #include "netmon.h"
 #include "esphome.h"
+#include "moon.h"
+#include "nettime.h"
+#include "config.h"
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 #include <SPI.h>
@@ -48,10 +51,10 @@ void sanitize_ascii(char *s) {
 // Print a temperature value followed by a hand-drawn degree glyph and unit,
 // centered within [leftX, leftX+width] and auto-shrinking so it never wraps.
 // Avoids the missing '°' bitmap in the default font.
-static void ui_print_temp(float t, const char *unit, uint16_t col, int leftX, int width) {
+static void ui_print_temp(float t, const char *unit, uint16_t col, int leftX, int width, int startSize = 3) {
   char buf[16];
   snprintf(buf, sizeof(buf), "%.1f", t);
-  int size = 3;
+  int size = startSize;
   int numW, unitW, total;
   for (;;) {
     tft.setTextSize(size);
@@ -116,7 +119,12 @@ void ui_poweroff() {
 }
 
 void ui_poweron() {
+  // The panel shares the common GND that the backlight transistor switches, so
+  // turning it "off" fully removes power from the ST7735 controller too. On wake
+  // it is a cold boot: give the rail a moment to come back up, then re-send the
+  // full init sequence (which also pulses the hardware RST pin) before drawing.
   ui_on = true;
+  delay(50);
   tft.initR(INITR_BLACKTAB);
   tft.setRotation(2);
   tft.fillScreen(ST7735_BLACK);
@@ -320,33 +328,39 @@ void ui_screen_forecast(int h, int m, int s, const Forecast &f) {
   tft.drawFastHLine(0, 14, 128, ST7735_BLUE);
 
   char buf[24];
-  int x = 6;
   time_t base = time(nullptr);
+  const int rowH = 46;
+  int y = 20;
   for (int i = 0; i < 3; i++) {
     const DayForecast &d = f.days[i];
-    tft.fillRect(x - 2, 18, 40, 138, ST7735_BLACK);
+    int cy = y + rowH / 2 - 2;               // vertical center of the row
     if (d.valid) {
-      ui_draw_icon(d.code, x + 18, 40, ST7735_YELLOW);
-      tft.setTextColor(ST7735_WHITE);
-      tft.setTextSize(1);
-      tft.setCursor(x, 62);
-      // Forecast day 0 == today; label with weekday name.
+      // Left: weather icon.
+      ui_draw_icon(d.code, 20, cy, ST7735_YELLOW);
+      // Middle-top: weekday label.
       time_t dt = base + (time_t)i * 86400;
       struct tm *tmv = localtime(&dt);
-      snprintf(buf, sizeof(buf), "%s", (i == 0) ? "Today" : dow_name(tmv->tm_wday));
-      tft.print(buf);
+      tft.setTextColor(ST7735_CYAN);
+      tft.setTextSize(1);
+      tft.setCursor(44, y + 6);
+      tft.print((i == 0) ? "Today" : dow_name(tmv->tm_wday));
+      // Top-right: high/low temps in green, aligned with the weekday.
       tft.setTextColor(ST7735_GREEN);
-      tft.setCursor(x, 78);
-      snprintf(buf, sizeof(buf), "%.0f/%.0fC", d.tmax, d.tmin);
+      snprintf(buf, sizeof(buf), "%.0f/%.0f C", d.tmax, d.tmin);
+      int tw = (int)strlen(buf) * 6;
+      tft.setCursor(126 - tw, y + 6);
       tft.print(buf);
-      tft.setTextColor(ST7735_WHITE);
-      tft.setCursor(x, 94);
+      // Bottom: condition text spanning the width under the weekday.
+      tft.setTextColor(0xAD55);
+      tft.setCursor(44, y + 24);
       tft.print(weather_icon(d.code));
     } else {
-      tft.setCursor(x, 40);
+      tft.setTextColor(ST7735_WHITE);
+      tft.setCursor(44, cy);
       tft.print("--");
     }
-    x += 42;
+    if (i < 2) tft.drawFastHLine(0, y + rowH - 2, 128, 0x2104);
+    y += rowH;
   }
   ui_screen_tag(3, 7);
 }
@@ -400,6 +414,27 @@ void ui_screen_esphome() {
 }
 
 // ---------- Screen 4: Weather detail ----------
+// Draw a small moon phase glyph at (cx,cy) radius r. phase 0/1=new, 0.5=full.
+// The lit fraction grows from the right (waxing) to full, then shrinks from the
+// right (waning), mimicking the northern-hemisphere appearance.
+static void ui_draw_moon(int cx, int cy, int r, float phase) {
+  tft.fillCircle(cx, cy, r, ST7735_BLACK);     // dark disc (new)
+  tft.drawCircle(cx, cy, r, 0x39C7);           // faint outline
+  // Illuminated fraction and which limb is lit.
+  bool waxing = phase < 0.5f;
+  float k = cosf(2.0f * (float)M_PI * phase);  // +1 new .. -1 full
+  // For each scanline, the terminator x-offset from center is k*sqrt(r^2-y^2).
+  for (int y = -r; y <= r; y++) {
+    int half = (int)(sqrtf((float)(r * r - y * y)) + 0.5f);
+    int term = (int)(k * half + 0.5f);
+    int x0, x1;
+    if (waxing) { x0 = term; x1 = half; }      // lit on the right
+    else        { x0 = -half; x1 = -term; }    // lit on the left
+    if (x1 >= x0)
+      tft.drawFastHLine(cx + x0, cy + y, x1 - x0 + 1, ST7735_WHITE);
+  }
+}
+
 void ui_screen_detail(int h, int m, int s, const Weather &w) {
   tft.fillScreen(ST7735_BLACK);
   tft.setTextColor(ST7735_CYAN);
@@ -409,23 +444,66 @@ void ui_screen_detail(int h, int m, int s, const Weather &w) {
   tft.drawFastHLine(0, 14, 128, ST7735_BLUE);
 
   if (w.valid) {
-    ui_draw_icon(w.code, 64, 44, ST7735_YELLOW);
     char buf[24];
-    tft.setTextColor(ST7735_GREEN);
-    tft.setTextSize(3);
-    tft.setCursor(2, 76);
-    ui_print_temp(w.temp, "C", ST7735_GREEN, 2, 0);
-
-    tft.setTextColor(ST7735_WHITE);
+    // Line 1: weather icon + condition text.
+    ui_draw_icon(w.code, 22, 38, ST7735_YELLOW);
+    tft.setTextColor(0xAD55);
     tft.setTextSize(1);
-    tft.setCursor(2, 104);
+    tft.setCursor(44, 34);
     tft.print(w.desc);
-    tft.setCursor(2, 118);
-    snprintf(buf, sizeof(buf), "Humidity %d%%", w.humidity);
+
+    // Line 2: temperature (green) then humidity (cyan), size 2, on one row.
+    tft.setTextSize(2);
+    tft.setTextColor(ST7735_GREEN);
+    tft.setCursor(6, 60);
+    ui_print_temp(w.temp, "C", ST7735_GREEN, 6, 0, 2);
+    tft.setTextColor(ST7735_CYAN);
+    snprintf(buf, sizeof(buf), "%d%%", w.humidity);
+    int hw = (int)strlen(buf) * 12;           // size 2 = 12px per char
+    tft.setCursor(122 - hw, 60);
     tft.print(buf);
-    tft.setCursor(2, 132);
-    snprintf(buf, sizeof(buf), "Updated %02d:%02d", h, m);
+
+    tft.drawFastHLine(0, 86, 128, 0x2104);
+    tft.setTextSize(1);                        // back to small text for sun/moon
+
+    const MoonInfo &mn = moon_data();
+    const char *sr = mn.valid && mn.sunrise[0] ? mn.sunrise : (w.sunrise[0] ? w.sunrise : "--:--");
+    const char *ss = mn.valid && mn.sunset[0]  ? mn.sunset  : (w.sunset[0]  ? w.sunset  : "--:--");
+
+    // --- Sun row (arrow-up = rise, arrow-down = set) ---
+    tft.setTextColor(ST7735_YELLOW);
+    tft.setCursor(2, 98);
+    tft.print("Sun");
+    tft.fillTriangle(34, 97, 30, 103, 38, 103, ST7735_YELLOW);  // up = rise
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(42, 98);
+    tft.print(sr);
+    tft.fillTriangle(84, 103, 80, 97, 88, 97, 0xFC00);          // down = set
+    tft.setCursor(92, 98);
+    tft.print(ss);
+
+    tft.drawFastHLine(0, 114, 128, 0x2104);                     // sun/moon divider
+
+    // --- Moon row ---
+    ui_draw_moon(10, 132, 9, mn.valid ? mn.phase : 0.0f);
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(24, 122);
+    if (mn.valid) {
+      snprintf(buf, sizeof(buf), "%s %d%%", mn.name, mn.illum);
+    } else {
+      snprintf(buf, sizeof(buf), "moon ...");
+    }
     tft.print(buf);
+
+    const char *mr = mn.valid && mn.moonrise[0] ? mn.moonrise : "--:--";
+    const char *ms = mn.valid && mn.moonset[0]  ? mn.moonset  : "--:--";
+    tft.fillTriangle(30, 143, 26, 149, 34, 149, 0xC618);       // up = rise
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(38, 144);
+    tft.print(mr);
+    tft.fillTriangle(84, 149, 80, 143, 88, 143, 0xC618);       // down = set
+    tft.setCursor(92, 144);
+    tft.print(ms);
   } else {
     tft.setCursor(8, 44);
     tft.print("no data");

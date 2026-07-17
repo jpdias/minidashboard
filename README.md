@@ -64,12 +64,19 @@ without those fields fall back to `CIV`.
 | SCK    | D5 (GPIO14) |
 | MOSI   | D7 (GPIO13) |
 | Button | D3 (GPIO0), pull-up; short = cycle screen, long = display on/off |
-| Backlight ctrl | D6 (GPIO12), optional transistor gate/base |
+| Backlight ctrl | D8 (GPIO15), optional transistor gate/base |
 
 ### Backlight control (optional)
 By default the ST7735 backlight is hardwired to 3.3V and always on. To switch it
-in software, add a transistor driven by **D6 (GPIO12)** and cut the module's
+in software, add a transistor driven by **D8 (GPIO15)** and cut the module's
 backlight trace.
+
+> **Pin choice matters.** Avoid **D6/GPIO12** (it's the hardware-SPI MISO line;
+> the TFT's SPI init reclaims it, so it can't hold a level) and **D0/GPIO16**
+> (a special I/O pin that won't drive a transistor cleanly). **D8/GPIO15** is a
+> normal, fully-controllable GPIO. It has a boot-strap pulldown, so the backlight
+> stays off for the first moment of boot and then the firmware drives it HIGH —
+> this also means the transistor base must not be pulled high externally.
 
 **This build uses a BC547 (NPN) as a low-side switch on the GND line** — the
 simplest option and the one wired here:
@@ -77,7 +84,7 @@ simplest option and the one wired here:
 - Cut the trace between the backlight LED cathode (LED−) and GND.
 - **Collector** → backlight LED− (the GND side you just cut).
 - **Emitter** → GND.
-- **Base** → **D6 (GPIO12)** through a ~1kΩ resistor.
+- **Base** → **D8 (GPIO15)** through a ~1kΩ resistor.
 - This is **active-high**: GPIO HIGH turns the backlight ON.
 
 There are plenty of other ways to do this depending on the parts you have and
@@ -85,10 +92,10 @@ whether you want a high-side (3.3V line) or low-side (GND line) switch:
 
 | Type | Wiring | Cut | Active level |
 |------|--------|-----|--------------|
-| **NPN (BC547, 2N2222)** — used here | Collector→LED−, Emitter→GND, Base→D6 via 1kΩ | LED cathode→GND | HIGH |
-| N-MOSFET (2N7000, AO3400) | Drain→LED−, Source→GND, Gate→D6 (100Ω series, 100k gate→GND) | LED cathode→GND | HIGH |
+| **NPN (BC547, 2N2222)** — used here | Collector→LED−, Emitter→GND, Base→D8 via 1kΩ | LED cathode→GND | HIGH |
+| N-MOSFET (2N7000, AO3400) | Drain→LED−, Source→GND, Gate→D8 (100Ω series, 100k gate→GND) | LED cathode→GND | HIGH |
 | PNP (2N2907, BC557) | Emitter→3.3V, Collector→LED+, Base via 10k pull-up + NPN driver | LED anode→3.3V | depends on driver |
-| P-MOSFET + NPN | P-FET in 3.3V line, gate driven by small NPN from D6 | LED anode→3.3V | depends on driver |
+| P-MOSFET + NPN | P-FET in 3.3V line, gate driven by small NPN from D8 | LED anode→3.3V | depends on driver |
 
 Enable it on the config page ("Backlight → Enable control") and leave
 **Active-high** checked (correct for the BC547 low-side wiring above). Set it to
@@ -129,7 +136,7 @@ appears in the router's DHCP list). Configurable fields:
 - Monitor list (HTTP reachability probes)
 - **Flight radar range** (nm, 0 disables the screen)
 - **Enabled screens** (per-screen checkboxes)
-- **Backlight**: enable D6 transistor control + active-high polarity
+- **Backlight**: enable D8 transistor control + active-high polarity
 
 Saving reboots the device.
 
@@ -151,6 +158,8 @@ has an upload form. Both **firmware** (`firmware.bin`) and **filesystem**
 - ESPHome: REST API at `http://<host>/sensor/<slug>` (enable `api: rest: true` in the ESPHome device YAML)
 - Monitors: HTTP reachability probes
 - Flights: adsb.fi open data API over TLS (`opendata.adsb.fi`), ~15s refresh
+- Sun/moon: USNO Astronomical Applications API over TLS (`aa.usno.navy.mil`) —
+  sunrise/set, moonrise/set, moon phase and illumination, fetched once per local day
 
 ## Notes
 - All network I/O is non-blocking (a shared HTTP state machine) so the clock keeps ticking.
@@ -158,3 +167,70 @@ has an upload form. Both **firmware** (`firmware.bin`) and **filesystem**
 - WiFi is auto-supervised and reconnects; an "offline" marker shows when down.
 - Free heap and fragmentation are shown on the System screen and logged periodically.
 - Live serial log is viewable at `/log` (and on the config page) on the device web UI.
+
+## Troubleshooting (problems hit during development)
+
+These are real issues encountered building this firmware and how they were solved.
+Kept here so the same wall isn't hit twice.
+
+### Two TLS connections at once exhaust the heap
+The ESP8266 heap can rarely fit **two concurrent BearSSL sessions**. When the moon
+fetch (`aa.usno.navy.mil`) and the flight radar (`opendata.adsb.fi`) tried to run
+at the same time, one would fail with `NoMemory`, and the flight FSM could wedge —
+symptom: **radar does its first fetch, then the refresh countdown sticks at 0 and
+never refreshes again.**
+- **Fix:** a shared single-session lock (`tlslock.h/.cpp`, global `gBusy`). Each
+  fetcher calls `tls_try_acquire()` before `new WiFiClientSecure` and
+  `tls_release()` in cleanup, so only one TLS session exists at a time.
+- **Belt-and-braces:** the lock **self-releases after 20s** in case a holder
+  crashes or forgets, and the flight FSM has a **12s global phase watchdog** that
+  aborts the cycle if any phase stalls — so a stuck countdown can no longer happen.
+- Also reduce TLS buffers (`setBufferSizes(4096, 512)`) and gate fetch starts on
+  `ESP.getMaxFreeBlockSize()` so a fetch only begins when contiguous heap is available.
+
+### Radar SSL is intentionally *not* validated
+Cert validation is off (`setInsecure()`). If the radar freezes it is **not** an SSL
+handshake problem — look at the FSM/lock (above), not certificates.
+
+### Backlight transistor pin choice
+Getting software backlight control working took three pins:
+- **D6/GPIO12** does not work — it's the hardware-SPI **MISO** line; the TFT SPI
+  init reclaims it so it can't hold a level.
+- **D0/GPIO16** does not work — special I/O pin, won't drive a transistor cleanly.
+- **D8/GPIO15** works — normal GPIO. Note its boot-strap pulldown: the base must
+  not be pulled high externally.
+
+### Cutting GND kills the whole panel (cold boot on wake)
+The BC547 low-side switch cuts the ST7735's **common GND**, which removes power from
+the *entire* panel (logic + backlight), not just the LED. So waking the display is a
+**cold boot**: `backlight_write(true)` must run **first** to restore power, then a
+50ms settle, then `initR()` + `setRotation(2)` + a full redraw. Doing `ui_poweron()`
+before restoring power initializes a dead panel and shows nothing.
+
+### `monitors` silently dropped from config
+Extra monitor hosts didn't persist. The ArduinoJson document was too small (2048);
+on overflow it **silently dropped the last array** (`monitors`). **Fix:** raised the
+config doc to 4096 and added an overflow warning + byte-count log.
+
+### Save page hung the browser tab
+After saving, the browser tab would hang waiting on a socket the device closed on
+reboot. **Fix:** the save response sends `Connection: close`, flushes and stops the
+socket, then `ESP.restart()` after 200ms; `saved.html` shows a 10s JS countdown that
+redirects back to `/`.
+
+### Moon fetched with the wrong (epoch) date at boot
+Before NTP sync, `time()` returns 1970, so the moon fetch used the wrong date.
+**Fix:** gate the fetch behind `time_is_synced()` (plus an ~8s boot grace) so it only
+runs once the clock is real. The timezone offset is computed via a
+`mktime(gmtime(now))` trick because this newlib build lacks `tm_gmtoff`.
+
+### Text rendered double-size unexpectedly
+Adafruit GFX text size is **sticky** — after drawing the temperature at
+`setTextSize(2)`, the sun/moon rows inherited size 2. **Fix:** always reset
+`setTextSize(1)` before the small rows. (Also: the built-in font is 7-bit ASCII
+only — no Unicode glyphs, so moon phase is drawn as a custom filled shape.)
+
+### WSL can't flash over serial
+The upload (`pio run -t upload` / `-t uploadfs`) must run from **Windows** — WSL
+can't drive the serial `/dev/ttyS*` ports. Building works fine in WSL. Also symlink
+`.pio/build` to a native (non-`/mnt/c`) path to avoid cross-compiler path errors.

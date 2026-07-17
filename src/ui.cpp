@@ -607,14 +607,18 @@ void ui_screen_system(int rssi, String intIp, unsigned long uptime) {
   tft.setCursor(2, 116); tft.print("Flash");
   tft.setCursor(2, 128); tft.print("Up");
 
-  // Static-ish values.
+  // Static-ish values (column at x=44 to leave room for wide values).
   tft.setTextColor(ST7735_GREEN);
-  tft.setCursor(56, 68);  tft.print(WiFi.SSID());
-  tft.setCursor(56, 80);  tft.print(intIp);
-  tft.setCursor(56, 92);  tft.print(WiFi.macAddress());
   char buf[24];
-  tft.setCursor(56, 104); snprintf(buf, sizeof(buf), "%dMHz", ESP.getCpuFreqMHz()); tft.print(buf);
-  tft.setCursor(56, 116); snprintf(buf, sizeof(buf), "%uKB", ESP.getFlashChipRealSize() / 1024); tft.print(buf);
+  String ssid = WiFi.SSID();
+  if (ssid.length() > 13) ssid = ssid.substring(0, 13);
+  tft.setCursor(44, 68);  tft.print(ssid);
+  tft.setCursor(44, 80);  tft.print(intIp);
+  // Only the last 3 MAC octets fit at this size.
+  String mac = WiFi.macAddress();
+  tft.setCursor(44, 92);  tft.print(mac.length() >= 8 ? mac.substring(9) : mac);
+  tft.setCursor(44, 104); snprintf(buf, sizeof(buf), "%dMHz", ESP.getCpuFreqMHz()); tft.print(buf);
+  tft.setCursor(44, 116); snprintf(buf, sizeof(buf), "%uKB", ESP.getFlashChipRealSize() / 1024); tft.print(buf);
 
   ui_system_update(rssi, uptime);
   ui_screen_tag(8, 8);
@@ -629,15 +633,15 @@ void ui_system_update(int rssi, unsigned long uptime) {
   uint32_t maxblk = ESP.getMaxFreeBlockSize();
   uint8_t frag = ESP.getHeapFragmentation();
 
-  tft.fillRect(56, 20, 72, 10, ST7735_BLACK);
-  tft.setCursor(56, 20); snprintf(buf, sizeof(buf), "%uB", heap); tft.print(buf);
-  tft.fillRect(56, 32, 72, 10, ST7735_BLACK);
-  tft.setCursor(56, 32); snprintf(buf, sizeof(buf), "%uB", maxblk); tft.print(buf);
-  tft.fillRect(56, 44, 72, 10, ST7735_BLACK);
-  tft.setCursor(56, 44); snprintf(buf, sizeof(buf), "%u%%", frag); tft.print(buf);
+  tft.fillRect(44, 20, 84, 10, ST7735_BLACK);
+  tft.setCursor(44, 20); snprintf(buf, sizeof(buf), "%uKB", heap / 1024); tft.print(buf);
+  tft.fillRect(44, 32, 84, 10, ST7735_BLACK);
+  tft.setCursor(44, 32); snprintf(buf, sizeof(buf), "%uKB", maxblk / 1024); tft.print(buf);
+  tft.fillRect(44, 44, 84, 10, ST7735_BLACK);
+  tft.setCursor(44, 44); snprintf(buf, sizeof(buf), "%u%%", frag); tft.print(buf);
 
-  tft.fillRect(56, 56, 72, 10, ST7735_BLACK);
-  tft.setCursor(56, 56);
+  tft.fillRect(44, 56, 84, 10, ST7735_BLACK);
+  tft.setCursor(44, 56);
   if (WiFi.status() == WL_CONNECTED) { snprintf(buf, sizeof(buf), "%ddBm", rssi); tft.print(buf); }
   else { tft.setTextColor(ST7735_RED); tft.print("offline"); tft.setTextColor(ST7735_GREEN); }
 

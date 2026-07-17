@@ -30,6 +30,12 @@ void setup() {
   Serial.begin(115200);
   mlog.println("\nBooting miniTV...");
 
+  // Watchdog: HW watchdog auto-resets the chip if the loop freezes and stops
+  // feeding it. Enable the software WDT with an explicit timeout as well.
+  ESP.wdtDisable();
+  ESP.wdtEnable(WDTO_8S);   // ~8s; must call ESP.wdtFeed() regularly
+  mlog.println("[WDT] watchdog enabled (8s)");
+
   config_load();
   portal_begin();          // connect wifi or spawn AP
 
@@ -51,6 +57,7 @@ void setup() {
   mlog.println("[BOOT] waiting for first data fetch...");
   ui_screen_loading(0, BOOT_TIMEOUT);   // draw static frame once
   while (!net_weather().valid && millis() - bootStart < BOOT_TIMEOUT) {
+    ESP.wdtFeed();
     portal_handle();
     netfsm_tick();
     esphome_tick();
@@ -92,6 +99,7 @@ void draw_screen(int h, int m, int s, int dow, int day, int mon, int yr) {
 }
 
 void loop() {
+  ESP.wdtFeed();           // keep the watchdog happy; a freeze stops this -> reset
   portal_handle();
   netfsm_tick();
   esphome_tick();

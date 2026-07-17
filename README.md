@@ -21,9 +21,13 @@ Backlight is hardwired to 3.3V (not software-controllable).
 
 ## Build
 ```bash
-pio run            # PlatformIO
-pio run -t upload  # flash
+pio run              # build firmware
+pio run -t upload    # flash firmware
+pio run -t uploadfs  # flash LittleFS image (web pages in data/)
 ```
+The web pages (config/log) live in `data/` and are served from LittleFS, so run
+`uploadfs` at least once (and again whenever the HTML/CSS changes).
+
 On Windows/WSL, symlink `.pio/build` to a native (non-`/mnt/c`) path to avoid cross-compiler errors.
 
 ## Configure
@@ -35,9 +39,11 @@ Config is stored in EEPROM.
 ## Data sources
 - Time: NTP (TZ from config)
 - Weather: Open-Meteo (no API key) — current + 3-day forecast
-- External IP: api.ipify.org
+- External IP: ipinfo.io
 - ESPHome: REST API at `http://<host>/sensor/<id>` (enable `api: rest: true` in the ESPHome device YAML)
 - Monitors: HTTP reachability probes
 
 ## Notes
 - All network I/O is non-blocking (state machines) so the clock keeps ticking.
+- A hardware watchdog (~8s) auto-resets the device if the main loop freezes.
+- Live serial log is viewable at `/log` on the device web UI.

@@ -1,6 +1,7 @@
 #include "logbuf.h"
 #include "portal.h"
 #include <ESP8266WebServer.h>
+#include <LittleFS.h>
 
 WiFiManager wm;
 static ESP8266WebServer server(80);
@@ -19,6 +20,15 @@ static String htmlEscape(const String &s) {
   return o;
 }
 
+// Load a template file from LittleFS into a String.
+static String loadTemplate(const char *path) {
+  File f = LittleFS.open(path, "r");
+  if (!f) return String();
+  String s = f.readString();
+  f.close();
+  return s;
+}
+
 static String monitors_to_csv() {
   String m;
   for (int i = 0; i < MONITOR_MAX; i++) {
@@ -31,27 +41,25 @@ static String monitors_to_csv() {
   return m;
 }
 
-static void handle_root() {
-  String mon = htmlEscape(monitors_to_csv());
-  String ssid = htmlEscape(cfg.wifi_ssid);
-  String tz = htmlEscape(cfg.tz);
+static void handle_style() {
+  File f = LittleFS.open("/style.css", "r");
+  if (!f) { server.send(404, "text/plain", "style.css not found"); return; }
+  server.streamFile(f, "text/css");
+  f.close();
+}
 
-  String html = "<!DOCTYPE html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
-                "<title>miniTV Config</title></head><body style=\"font-family:sans-serif;max-width:420px;margin:auto;padding:12px\">"
-                "<h2>miniTV Configuration</h2>"
-                "<form method=\"post\" action=\"/save\">"
-                "WiFi SSID:<br><input name=\"ssid\" value=\"" + ssid + "\" style=\"width:100%\"><br><br>"
-                "WiFi Password:<br><input name=\"pass\" type=\"password\" placeholder=\"(unchanged if blank)\" style=\"width:100%\"><br><br>"
-                "Latitude:<br><input name=\"lat\" value=\"" + String(cfg.lat, 4) + "\" style=\"width:100%\"><br><br>"
-                "Longitude:<br><input name=\"lon\" value=\"" + String(cfg.lon, 4) + "\" style=\"width:100%\"><br><br>"
-                "Timezone:<br><input name=\"tz\" value=\"" + tz + "\" style=\"width:100%\"><br><br>"
-                "Weather refresh (sec, min 60):<br><input name=\"wi\" value=\"" + String(cfg.weather_interval) + "\" style=\"width:100%\"><br><br>"
-                "Show metrics (0/1):<br><input name=\"me\" value=\"" + String(cfg.show_metrics ? 1 : 0) + "\" style=\"width:100%\"><br><br>"
-                "ESPHome host (e.g. ikea-hack.lan):<br><input name=\"eh\" value=\"" + htmlEscape(cfg.esphome_host) + "\" style=\"width:100%\"><br><br>"
-                "Monitors (comma separated):<br><input name=\"mon\" value=\"" + mon + "\" style=\"width:100%\"><br><br>"
-                "<button type=\"submit\">Save &amp; Reboot</button>"
-                "</form><hr><p>Device: " + WiFi.localIP().toString() +
-                " &middot; <a href=\"/log\">Live log</a></p></body></html>";
+static void handle_root() {
+  String html = loadTemplate("/config.html");
+  if (html.length() == 0) { server.send(500, "text/plain", "config.html missing (run uploadfs)"); return; }
+  html.replace("{{SSID}}", htmlEscape(cfg.wifi_ssid));
+  html.replace("{{LAT}}", String(cfg.lat, 4));
+  html.replace("{{LON}}", String(cfg.lon, 4));
+  html.replace("{{TZ}}", htmlEscape(cfg.tz));
+  html.replace("{{WI}}", String(cfg.weather_interval));
+  html.replace("{{ME}}", String(cfg.show_metrics ? 1 : 0));
+  html.replace("{{EH}}", htmlEscape(cfg.esphome_host));
+  html.replace("{{MON}}", htmlEscape(monitors_to_csv()));
+  html.replace("{{IP}}", WiFi.localIP().toString());
   server.send(200, "text/html", html);
 }
 
@@ -60,17 +68,10 @@ static void handle_log() {
   char* buf = logbuf_copy();
   String body = buf ? String(buf) : String("(empty)");
   delete[] buf;
-  // escape HTML
-  body.replace("&", "&amp;");
-  body.replace("<", "&lt;");
-  body.replace(">", "&gt;");
-  String html = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
-                "<title>miniTV Log</title>"
-                "<meta http-equiv=\"refresh\" content=\"2\">"
-                "<style>body{background:#111;color:#0f0;font:12px monospace;white-space:pre-wrap;padding:8px}</style>"
-                "</head><body>";
-  html += body;
-  html += "\n\n<a href=\"/\" style=\"color:#0ff\">back</a></body></html>";
+  body = htmlEscape(body);
+  String html = loadTemplate("/log.html");
+  if (html.length() == 0) { server.send(500, "text/plain", "log.html missing (run uploadfs)"); return; }
+  html.replace("{{LOG}}", body);
   server.send(200, "text/html", html);
 }
 
@@ -106,14 +107,19 @@ static void handle_save() {
     }
   }
   config_save();
-  server.send(200, "text/html", "<!DOCTYPE html><html><body style=\"font-family:sans-serif;padding:20px\">"
-                                "<h3>Saved. Rebooting...</h3></body></html>");
+  String html = loadTemplate("/saved.html");
+  if (html.length() == 0) html = "<html><body><h3>Saved. Rebooting...</h3></body></html>";
+  server.send(200, "text/html", html);
   delay(1000);
   ESP.restart();
 }
 
 void portal_begin() {
   config_load();
+
+  if (!LittleFS.begin()) {
+    mlog.println("[PORTAL] LittleFS mount failed (run 'pio run -t uploadfs')");
+  }
 
   WiFiManagerParameter p_lat("lat", "Latitude", String(cfg.lat, 4).c_str(), 10);
   WiFiManagerParameter p_lon("lon", "Longitude", String(cfg.lon, 4).c_str(), 10);
@@ -176,6 +182,7 @@ void portal_begin() {
 
   // Always-on admin web UI (station mode)
   server.on("/", handle_root);
+  server.on("/style.css", handle_style);
   server.on("/save", HTTP_POST, handle_save);
   server.on("/log", handle_log);
   server.begin();

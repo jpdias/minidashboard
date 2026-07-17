@@ -11,6 +11,7 @@
 #define MONITOR_LEN    64
 
 #define ESPHOME_SENSORS_LEN 192
+#define SCREEN_MAX 7   // Clock, ESPHome, Forecast, Network, Detail, Monitors, Flight
 
 struct Config {
   char wifi_ssid[33] = {0};
@@ -28,6 +29,7 @@ struct Config {
   int   night_end = 7;            // hour screen turns on
   int   ntp_interval_min = 60;    // NTP resync period (minutes)
   int   flight_range = 25;        // flight radar range in nm (0 disables screen)
+  bool  screen_enabled[SCREEN_MAX] = { true, true, true, true, true, true, true };
 };
 
 extern Config cfg;

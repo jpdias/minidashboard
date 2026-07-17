@@ -6,6 +6,9 @@ input[type=radio],input[type=checkbox]{width:auto}
 button,input[type=button],input[type=submit]{cursor:pointer;border:0;background-color:#1fa3ec;color:#fff;line-height:2.4rem;font-size:1.2rem;width:100%}
 a{color:#000;font-weight:700;text-decoration:none}a:hover{color:#1fa3ec;text-decoration:underline}
 label{font-weight:700;font-size:.9em;display:block}
+.chk{margin:5px 0}
+.cb{font-weight:400;display:flex;align-items:center;gap:8px;margin:3px 0}
+.cb input{width:auto;margin:0}
 .msg{padding:15px;margin:15px 0;border:1px solid #eee;border-left-width:5px;border-left-color:#1fa3ec;max-width:500px;margin-left:auto;margin-right:auto}
 .cols{display:flex;flex-wrap:wrap;gap:24px;justify-content:center;align-items:flex-start;max-width:1400px;margin:0 auto}
 .col{flex:1 1 320px;min-width:280px;max-width:420px;text-align:left}

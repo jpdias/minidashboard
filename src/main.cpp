@@ -52,6 +52,13 @@ void setup() {
   monitors_begin();
   flight_begin();
 
+  // Land on the first enabled screen (fall back to Clock if none enabled).
+  screenIndex = 0;
+  for (int i = 0; i < SCREEN_COUNT; i++) {
+    bool disabled = !cfg.screen_enabled[i] || (i == 6 && cfg.flight_range <= 0);
+    if (!disabled) { screenIndex = i; break; }
+  }
+
   // --- Boot loader: block on a loading screen until weather (+IP) is fetched ---
   const unsigned long BOOT_TIMEOUT = 20000;
   unsigned long bootStart = millis();
@@ -137,12 +144,15 @@ void loop() {
   monitors_tick();
   flight_tick();
 
-  // --- Button cycles screens (skips flight radar when disabled) ---
+  // --- Button cycles screens (skips disabled screens; flight also needs range) ---
   if (btnToggle) {
     btnToggle = false;
-    do {
+    for (int n = 0; n < SCREEN_COUNT; n++) {
       screenIndex = (screenIndex + 1) % SCREEN_COUNT;
-    } while (screenIndex == 6 && cfg.flight_range <= 0);
+      bool disabled = !cfg.screen_enabled[screenIndex] ||
+                      (screenIndex == 6 && cfg.flight_range <= 0);
+      if (!disabled) break;
+    }
     drawnStatic = false;
     mlog.printf("[BTN] screen %d/%d\n", screenIndex + 1, SCREEN_COUNT);
   }

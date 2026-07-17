@@ -38,6 +38,17 @@
 <input id="mon" name="mon" value="{{MON}}">
 <label for="fr">Flight radar range (nm, 0=off)</label>
 <input id="fr" name="fr" value="{{FR}}">
+<label>Enabled screens</label>
+<input type="hidden" name="scr" value="1">
+<div class="chk">
+<label class="cb"><input type="checkbox" name="sc0" {{SC0}}> Clock</label>
+<label class="cb"><input type="checkbox" name="sc1" {{SC1}}> ESPHome</label>
+<label class="cb"><input type="checkbox" name="sc2" {{SC2}}> Forecast</label>
+<label class="cb"><input type="checkbox" name="sc3" {{SC3}}> Network</label>
+<label class="cb"><input type="checkbox" name="sc4" {{SC4}}> Weather Detail</label>
+<label class="cb"><input type="checkbox" name="sc5" {{SC5}}> Monitors</label>
+<label class="cb"><input type="checkbox" name="sc6" {{SC6}}> Flight Radar</label>
+</div>
 <br><br>
 <button type="submit">Save &amp; Reboot</button>
 </form>

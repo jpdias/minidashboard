@@ -2,10 +2,12 @@
 #include "portal.h"
 #include "nettime.h"
 #include <ESP8266WebServer.h>
+#include <ESP8266HTTPUpdateServer.h>
 #include <LittleFS.h>
 
 WiFiManager wm;
 static ESP8266WebServer server(80);
+static ESP8266HTTPUpdateServer httpUpdater;
 
 // HTML escape for safe form values
 static String htmlEscape(const String &s) {
@@ -208,6 +210,7 @@ void portal_begin() {
   server.on("/style.css", handle_style);
   server.on("/save", HTTP_POST, handle_save);
   server.on("/logtext", handle_logtext);
+  httpUpdater.setup(&server);   // OTA: firmware + filesystem at /update
   server.begin();
   mlog.println("[PORTAL] admin UI started at http://" + WiFi.localIP().toString());
 }

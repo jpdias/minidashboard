@@ -31,6 +31,14 @@
 <br><br>
 <button type="submit">Save &amp; Reboot</button>
 </form>
+<hr>
+<h3>Firmware / FS Update</h3>
+<form method="POST" action="/update" enctype="multipart/form-data">
+<label for="fw">firmware.bin or littlefs.bin</label>
+<input type="file" id="fw" name="update" accept=".bin">
+<br><br>
+<button type="submit">Upload &amp; Flash</button>
+</form>
 <p class="foot">Device: {{IP}}</p>
 </div>
 <div class="col">

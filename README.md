@@ -66,10 +66,49 @@ without those fields fall back to `CIV`.
 | Button | D3 (GPIO0), pull-up; short = cycle screen, long = display on/off |
 | Backlight ctrl | D8 (GPIO15), optional transistor gate/base |
 
+```
+        Wemos D1 mini                        ST7735 1.8" TFT
+       +--------------+                      +---------------+
+       |          3V3 |--------------------->| VCC           |
+       |          3V3 |--------------------->| LED+ (anode)  |
+       |   D1 (GPIO5) |--------------------->| CS            |
+       |   D2 (GPIO4) |--------------------->| DC / A0       |
+       |   D4 (GPIO2) |--------------------->| RES / RST     |
+       |  D5 (GPIO14) |--------------------->| SCK / CLK     |
+       |  D7 (GPIO13) |--------------------->| SDA / MOSI    |
+       |              |                      | GND (common)  |---+  (cut this trace
+       |   D3 (GPIO0) |---+                  +---------------+   |   to Wemos GND;
+       |  D8 (GPIO15) |-+ |                                      |   route via NPN)
+       |          GND |-|-|--------+                             |
+       +--------------+ | |        |                             |
+                        | |        |                             |
+                        | |  [ Button ]                          |
+                        | +----o  o----+   (short=cycle screen,  |
+                        |              |    long=display on/off)  |
+                        |             GND                         |
+                        |                                         |
+                        |   Backlight/power control (optional)    |
+                        |          BC547 NPN                       |
+                        |            .---.                         |
+                        |  base     /  C  \  collector            |
+                        +--[2k2]---|B      |------------------------+  (panel GND)
+                                    \  E  /
+                                     '-|-'
+                                       |  emitter
+                                      GND  (Wemos GND)
+```
+> **Note:** the BC547 is a **low-side switch on the panel's *common GND***, not
+> just the LED line. GPIO15 HIGH turns the transistor on and connects the panel's
+> GND, powering the *whole* ST7735 (logic **and** backlight) — active-high. Cutting
+> GND therefore fully powers down the panel, so waking it is a cold boot (restore
+> power first, then re-init the display). See below for details and alternative
+> transistor topologies.
+
 ### Backlight control (optional)
-By default the ST7735 backlight is hardwired to 3.3V and always on. To switch it
-in software, add a transistor driven by **D8 (GPIO15)** and cut the module's
-backlight trace.
+By default the ST7735 is always on. This build switches the **whole panel** in
+software by putting a transistor in its **common GND** line, driven by
+**D8 (GPIO15)**. (You can instead switch only the LED- line for backlight-only
+control — see the topology table below.)
 
 > **Pin choice matters.** Avoid **D6/GPIO12** (it's the hardware-SPI MISO line;
 > the TFT's SPI init reclaims it, so it can't hold a level) and **D0/GPIO16**
@@ -81,18 +120,24 @@ backlight trace.
 **This build uses a BC547 (NPN) as a low-side switch on the GND line** — the
 simplest option and the one wired here:
 
-- Cut the trace between the backlight LED cathode (LED−) and GND.
-- **Collector** → backlight LED− (the GND side you just cut).
+- Cut the panel's **common GND** trace to the Wemos GND.
+- **Collector** → panel GND (the side you just cut).
 - **Emitter** → GND.
 - **Base** → **D8 (GPIO15)** through a ~1kΩ resistor.
-- This is **active-high**: GPIO HIGH turns the backlight ON.
+- This is **active-high**: GPIO HIGH turns the panel ON.
+
+> **Tip — dimming:** a larger base resistor partially starves the transistor so it
+> doesn't saturate, dropping a little more voltage across it and **dimming the
+> backlight**. This build uses **2.2kΩ** for a slightly dimmer, easier-on-the-eyes
+> panel. Use ~1kΩ for full brightness, or go higher for dimmer (too high and the
+> panel may flicker or not power up reliably).
 
 There are plenty of other ways to do this depending on the parts you have and
 whether you want a high-side (3.3V line) or low-side (GND line) switch:
 
 | Type | Wiring | Cut | Active level |
 |------|--------|-----|--------------|
-| **NPN (BC547, 2N2222)** — used here | Collector→LED−, Emitter→GND, Base→D8 via 1kΩ | LED cathode→GND | HIGH |
+| **NPN (BC547, 2N2222)** — used here | Collector→panel GND, Emitter→GND, Base→D8 via 2.2kΩ (1kΩ=full brightness, higher=dimmer) | common GND→Wemos GND | HIGH |
 | N-MOSFET (2N7000, AO3400) | Drain→LED−, Source→GND, Gate→D8 (100Ω series, 100k gate→GND) | LED cathode→GND | HIGH |
 | PNP (2N2907, BC557) | Emitter→3.3V, Collector→LED+, Base via 10k pull-up + NPN driver | LED anode→3.3V | depends on driver |
 | P-MOSFET + NPN | P-FET in 3.3V line, gate driven by small NPN from D8 | LED anode→3.3V | depends on driver |

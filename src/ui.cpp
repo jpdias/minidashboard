@@ -203,7 +203,8 @@ void ui_screen_tag(int idx, int total) {
   ui_draw_wifi_bars(76, 1);
   tft.setTextColor(ST7735_BLUE);
   tft.setTextSize(1);
-  tft.setCursor(100, 2);
+  // Right-align the counter against the screen edge (each char is 6px).
+  tft.setCursor(126 - (int)strlen(buf) * 6, 2);
   tft.print(buf);
 }
 
@@ -213,14 +214,14 @@ void ui_draw_clock_static(int h, int m, int dow, int day, int mon, int yr) {
   char buf[20];
   tft.fillRect(0, 0, 128, 50, ST7735_BLACK);
 
-  tft.setTextColor(ST7735_CYAN);
+  // Date text is cyan when NTP-synced, red when not (doubles as the sync dot,
+  // so nothing overlaps the date).
+  tft.setTextColor(time_is_synced() ? ST7735_CYAN : ST7735_RED);
   tft.setTextSize(1);
   tft.setCursor(2, 2);
   // Two-digit year keeps the date compact so it clears the top-bar widgets.
   snprintf(buf, sizeof(buf), "%s %02d/%02d/%02d", dow_name(dow), day, mon, yr % 100);
   tft.print(buf);
-  // Time-sync indicator dot, left of the WiFi bars.
-  tft.fillCircle(68, 5, 3, time_is_synced() ? ST7735_GREEN : ST7735_RED);
 
   tft.setTextColor(ST7735_WHITE);
   tft.setTextSize(3);
@@ -303,7 +304,7 @@ void ui_screen_clock(int h, int m, int s, int dow, int day, int mon, int yr,
   ui_draw_weather(w);
   ui_draw_flightinfo(flight_data());
   ui_draw_metrics(metrics, rssi, intIp, extIp, uptime);
-  ui_screen_tag(1, 7);
+  ui_screen_tag(1, 8);
 }
 
 // ---------- Screen 2: 3-day forecast ----------
@@ -344,7 +345,7 @@ void ui_screen_forecast(int h, int m, int s, const Forecast &f) {
     }
     x += 42;
   }
-  ui_screen_tag(3, 7);
+  ui_screen_tag(3, 8);
 }
 
 // ---------- Screen 3: Network ----------
@@ -388,7 +389,7 @@ void ui_screen_network(int rssi, String intIp, String extIp, unsigned long uptim
   tft.setCursor(2, 128);
   snprintf(buf, sizeof(buf), "frag %u%%", (unsigned)ESP.getHeapFragmentation());
   tft.print(buf);
-  ui_screen_tag(4, 7);
+  ui_screen_tag(4, 8);
 }
 
 // ---------- Screen: ESPHome sensors (2nd) ----------
@@ -436,7 +437,7 @@ void ui_screen_esphome() {
     }
     y += 32;
   }
-  ui_screen_tag(2, 7);
+  ui_screen_tag(2, 8);
 }
 
 // ---------- Screen 4: Weather detail ----------
@@ -470,7 +471,7 @@ void ui_screen_detail(int h, int m, int s, const Weather &w) {
     tft.setCursor(8, 44);
     tft.print("no data");
   }
-  ui_screen_tag(5, 7);
+  ui_screen_tag(5, 8);
 }
 
 // ---------- Screen 5: Website monitors ----------
@@ -504,7 +505,7 @@ void ui_screen_monitors() {
     tft.print(buf);
     y += 30;
   }
-  ui_screen_tag(6, 7);
+  ui_screen_tag(6, 8);
 }
 
 // ---------- Screen: Flight radar ----------
@@ -522,7 +523,7 @@ void ui_screen_flight(const FlightData &fd, int rangeNm) {
     tft.setTextColor(ST7735_WHITE);
     tft.setCursor(10, 70);
     tft.print("Disabled (set range)");
-    ui_screen_tag(7, 7);
+    ui_screen_tag(7, 8);
     return;
   }
 
@@ -581,7 +582,71 @@ void ui_screen_flight(const FlightData &fd, int rangeNm) {
     tft.print(buf);
   }
 
-  ui_screen_tag(7, 7);
+  ui_screen_tag(7, 8);
+}
+
+// ---------- Screen: System / technical info ----------
+// Static labels + IP/version; dynamic values refreshed by ui_system_update.
+void ui_screen_system(int rssi, String intIp, unsigned long uptime) {
+  tft.fillScreen(ST7735_BLACK);
+  tft.setTextColor(ST7735_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(2, 2);
+  tft.print("System");
+  tft.drawFastHLine(0, 14, 128, ST7735_BLUE);
+
+  tft.setTextColor(ST7735_WHITE);
+  tft.setCursor(2, 20);  tft.print("Heap");
+  tft.setCursor(2, 32);  tft.print("MaxBlk");
+  tft.setCursor(2, 44);  tft.print("Frag");
+  tft.setCursor(2, 56);  tft.print("WiFi");
+  tft.setCursor(2, 68);  tft.print("SSID");
+  tft.setCursor(2, 80);  tft.print("IP");
+  tft.setCursor(2, 92);  tft.print("MAC");
+  tft.setCursor(2, 104); tft.print("CPU");
+  tft.setCursor(2, 116); tft.print("Flash");
+  tft.setCursor(2, 128); tft.print("Up");
+
+  // Static-ish values.
+  tft.setTextColor(ST7735_GREEN);
+  tft.setCursor(56, 68);  tft.print(WiFi.SSID());
+  tft.setCursor(56, 80);  tft.print(intIp);
+  tft.setCursor(56, 92);  tft.print(WiFi.macAddress());
+  char buf[24];
+  tft.setCursor(56, 104); snprintf(buf, sizeof(buf), "%dMHz", ESP.getCpuFreqMHz()); tft.print(buf);
+  tft.setCursor(56, 116); snprintf(buf, sizeof(buf), "%uKB", ESP.getFlashChipRealSize() / 1024); tft.print(buf);
+
+  ui_system_update(rssi, uptime);
+  ui_screen_tag(8, 8);
+}
+
+void ui_system_update(int rssi, unsigned long uptime) {
+  char buf[24];
+  tft.setTextSize(1);
+  tft.setTextColor(ST7735_GREEN);
+
+  uint32_t heap = ESP.getFreeHeap();
+  uint32_t maxblk = ESP.getMaxFreeBlockSize();
+  uint8_t frag = ESP.getHeapFragmentation();
+
+  tft.fillRect(56, 20, 72, 10, ST7735_BLACK);
+  tft.setCursor(56, 20); snprintf(buf, sizeof(buf), "%uB", heap); tft.print(buf);
+  tft.fillRect(56, 32, 72, 10, ST7735_BLACK);
+  tft.setCursor(56, 32); snprintf(buf, sizeof(buf), "%uB", maxblk); tft.print(buf);
+  tft.fillRect(56, 44, 72, 10, ST7735_BLACK);
+  tft.setCursor(56, 44); snprintf(buf, sizeof(buf), "%u%%", frag); tft.print(buf);
+
+  tft.fillRect(56, 56, 72, 10, ST7735_BLACK);
+  tft.setCursor(56, 56);
+  if (WiFi.status() == WL_CONNECTED) { snprintf(buf, sizeof(buf), "%ddBm", rssi); tft.print(buf); }
+  else { tft.setTextColor(ST7735_RED); tft.print("offline"); tft.setTextColor(ST7735_GREEN); }
+
+  tft.fillRect(24, 128, 104, 10, ST7735_BLACK);
+  unsigned long up = uptime / 1000;
+  tft.setCursor(24, 128);
+  snprintf(buf, sizeof(buf), "%lud %02lu:%02lu:%02lu",
+           up / 86400, (up % 86400) / 3600, (up % 3600) / 60, up % 60);
+  tft.print(buf);
 }
 
 // ---------- Legacy combined (unused by loop, kept for reference) ----------
@@ -624,17 +689,13 @@ void ui_draw_metrics(bool metrics, int rssi, String intIp, String extIp, unsigne
   if (!metrics) return;
 
   tft.drawFastHLine(0, 102, 128, ST7735_BLUE);
-  tft.setTextColor(ST7735_MAGENTA);
   tft.setTextSize(1);
   char buf[24];
-  tft.setCursor(2, 108);
-  snprintf(buf, sizeof(buf), "WiFi %ddBm", rssi);
-  tft.print(buf);
   tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(2, 118);
+  tft.setCursor(2, 108);
   tft.print("LAN ");
   tft.print(intIp);
-  tft.setCursor(2, 128);
+  tft.setCursor(2, 118);
   tft.print("WAN ");
   tft.print(extIp.length() ? extIp : "-");
   tft.setCursor(2, 138);

@@ -29,6 +29,8 @@ void ui_screen_monitors();
 void ui_screen_esphome();
 void ui_screen_flight(const FlightData &fd, int rangeNm);
 void ui_draw_flightinfo(const FlightData &fd);   // closest-flight box on Clock screen
+void ui_screen_system(int rssi, String intIp, unsigned long uptime);
+void ui_system_update(int rssi, unsigned long uptime);   // refresh dynamic values
 
 // legacy/combined (still referenced)
 void ui_draw(int h, int m, int s, int dow, int day, int mon, int yr,

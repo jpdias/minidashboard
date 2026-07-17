@@ -16,7 +16,7 @@ bool screenOn = true;
 int lastAutoHour = -1;
 bool drawnStatic = false;
 int screenIndex = 0;          // 0..N -> screens 1..N+1
-const int SCREEN_COUNT = 7;   // last screen (6) is flight radar
+const int SCREEN_COUNT = 8;   // 6 = flight radar, 7 = system info
 
 void IRAM_ATTR btn_isr() {
   static unsigned long last = 0;
@@ -106,6 +106,9 @@ void draw_screen(int h, int m, int s, int dow, int day, int mon, int yr) {
       break;
     case 6:
       ui_screen_flight(flight_data(), cfg.flight_range);
+      break;
+    case 7:
+      ui_screen_system(WiFi.RSSI(), WiFi.localIP().toString(), millis());
       break;
   }
 }
@@ -211,6 +214,12 @@ void loop() {
       }
       // Refresh only the flight box when new flight data arrives (no full redraw).
       if (flUpdated) ui_draw_flightinfo(flight_data());
+    } else if (screenIndex == 7) {
+      // System screen: refresh dynamic values once per second (isolated boxes).
+      if (millis() - lastSec >= 1000) {
+        lastSec = millis();
+        ui_system_update(WiFi.RSSI(), millis());
+      }
     }
   }
 

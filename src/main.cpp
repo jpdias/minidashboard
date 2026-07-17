@@ -150,6 +150,16 @@ void loop() {
     else if (!night && !screenOn) { screenOn = true; ui_poweron(); drawnStatic = false; mlog.println("[AUTO] day -> screen ON"); }
   }
 
+  // Periodic heap health log (throttled).
+  static unsigned long lastHeapLog = 0;
+  if (millis() - lastHeapLog > 60000) {
+    lastHeapLog = millis();
+    mlog.printf("[HEAP] free=%u frag=%u%% maxblk=%u\n",
+                (unsigned)ESP.getFreeHeap(),
+                (unsigned)ESP.getHeapFragmentation(),
+                (unsigned)ESP.getMaxFreeBlockSize());
+  }
+
   // Non-blocking network updates (driven by netfsm_tick)
   bool dataUpdated = netfsm_updated();
 

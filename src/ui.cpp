@@ -316,6 +316,12 @@ void ui_screen_network(int rssi, String intIp, String extIp, unsigned long uptim
   snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
            up / 3600, (up % 3600) / 60, up % 60);
   tft.print(buf);
+  tft.setCursor(2, 116);
+  snprintf(buf, sizeof(buf), "heap %u B", (unsigned)ESP.getFreeHeap());
+  tft.print(buf);
+  tft.setCursor(2, 128);
+  snprintf(buf, sizeof(buf), "frag %u%%", (unsigned)ESP.getHeapFragmentation());
+  tft.print(buf);
   ui_screen_tag(4, 6);
 }
 

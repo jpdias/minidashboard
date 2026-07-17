@@ -4,6 +4,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7735.h>
 #include <SPI.h>
+#include <time.h>
 
 #define TFT_CS   D1
 #define TFT_DC   D2
@@ -255,6 +256,7 @@ void ui_screen_forecast(int h, int m, int s, const Forecast &f) {
 
   char buf[24];
   int x = 6;
+  time_t base = time(nullptr);
   for (int i = 0; i < 3; i++) {
     const DayForecast &d = f.days[i];
     tft.fillRect(x - 2, 18, 40, 138, ST7735_BLACK);
@@ -263,7 +265,10 @@ void ui_screen_forecast(int h, int m, int s, const Forecast &f) {
       tft.setTextColor(ST7735_WHITE);
       tft.setTextSize(1);
       tft.setCursor(x, 62);
-      snprintf(buf, sizeof(buf), "Day %d", i + 1);
+      // Forecast day 0 == today; label with weekday name.
+      time_t dt = base + (time_t)i * 86400;
+      struct tm *tmv = localtime(&dt);
+      snprintf(buf, sizeof(buf), "%s", (i == 0) ? "Today" : dow_name(tmv->tm_wday));
       tft.print(buf);
       tft.setTextColor(ST7735_GREEN);
       tft.setCursor(x, 78);

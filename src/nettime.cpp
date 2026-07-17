@@ -167,8 +167,12 @@ bool parse_forecast_body(const String &body, Forecast &f) {
 bool parse_extip_body(const String &body, String &ip) {
   String json = json_only(body);
   if (json.length() == 0) { mlog.println("[IP] no JSON"); return false; }
-  DynamicJsonDocument doc(512);
-  if (deserializeJson(doc, json.c_str())) { mlog.println("[IP] parse error"); return false; }
+  // Filter to only the "ip" field so buffer size is independent of response size.
+  StaticJsonDocument<32> filter;
+  filter["ip"] = true;
+  DynamicJsonDocument doc(128);
+  DeserializationError err = deserializeJson(doc, json.c_str(), DeserializationOption::Filter(filter));
+  if (err) { mlog.printf("[IP] parse error: %s\n", err.c_str()); return false; }
   const char* p = doc["ip"] | "";
   if (strlen(p) < 7 || strchr(p, '.') == NULL) { mlog.printf("[IP] unexpected: '%s'\n", p); return false; }
   ip = p;

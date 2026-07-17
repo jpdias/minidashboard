@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include "nettime.h"
+#include "flight.h"
 
 void ui_begin();
 void ui_poweroff();
@@ -25,6 +26,7 @@ void ui_screen_network(int rssi, String intIp, String extIp, unsigned long uptim
 void ui_screen_detail(int h, int m, int s, const Weather &w);
 void ui_screen_monitors();
 void ui_screen_esphome();
+void ui_screen_flight(const FlightData &fd, int rangeNm);
 
 // legacy/combined (still referenced)
 void ui_draw(int h, int m, int s, int dow, int day, int mon, int yr,

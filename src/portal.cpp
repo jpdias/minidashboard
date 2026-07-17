@@ -91,6 +91,7 @@ static void handle_root() {
   html.replace("{{EH}}", htmlEscape(cfg.esphome_host));
   html.replace("{{EHS}}", htmlEscape(cfg.esphome_sensors));
   html.replace("{{MON}}", htmlEscape(monitors_to_csv()));
+  html.replace("{{FR}}", String(cfg.flight_range));
   html.replace("{{IP}}", WiFi.localIP().toString());
   html.replace("{{LOG}}", htmlEscape(log_text()));
   server.send(200, "text/html", html);
@@ -120,6 +121,7 @@ static void handle_save() {
   if (server.hasArg("ni")) { int ni = server.arg("ni").toInt(); if (ni >= 1) cfg.ntp_interval_min = ni; }
   if (server.hasArg("eh")) strncpy(cfg.esphome_host, server.arg("eh").c_str(), sizeof(cfg.esphome_host) - 1);
   if (server.hasArg("ehs")) strncpy(cfg.esphome_sensors, server.arg("ehs").c_str(), sizeof(cfg.esphome_sensors) - 1);
+  if (server.hasArg("fr")) cfg.flight_range = constrain(server.arg("fr").toInt(), 0, 250);
   if (server.hasArg("mon")) {
     String m = server.arg("mon");
     m.replace(" ", "");

@@ -27,6 +27,7 @@ struct Config {
   int   night_start = 23;         // hour screen turns off
   int   night_end = 7;            // hour screen turns on
   int   ntp_interval_min = 60;    // NTP resync period (minutes)
+  int   flight_range = 25;        // flight radar range in nm (0 disables screen)
 };
 
 extern Config cfg;

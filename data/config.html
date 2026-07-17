@@ -36,6 +36,8 @@
 <input id="ehs" name="ehs" value="{{EHS}}">
 <label for="mon">Monitors (comma separated)</label>
 <input id="mon" name="mon" value="{{MON}}">
+<label for="fr">Flight radar range (nm, 0=off)</label>
+<input id="fr" name="fr" value="{{FR}}">
 <br><br>
 <button type="submit">Save &amp; Reboot</button>
 </form>
@@ -49,7 +51,7 @@
 </form>
 <p class="foot">Device: {{IP}}</p>
 </div>
-<div class="col">
+<div class="col wide">
 <h3>Live Log</h3>
 <div class="term" id="log">{{LOG}}</div>
 </div>

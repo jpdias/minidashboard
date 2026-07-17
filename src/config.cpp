@@ -48,6 +48,7 @@ static bool load_json() {
   cfg.night_start = doc["night_start"] | 23;
   cfg.night_end = doc["night_end"] | 7;
   cfg.ntp_interval_min = doc["ntp_interval_min"] | 60;
+  cfg.flight_range = doc["flight_range"] | 25;
   for (int i = 0; i < MONITOR_MAX; i++) cfg.monitors[i][0] = 0;
   JsonArray mons = doc["monitors"];
   int mi = 0;
@@ -117,6 +118,7 @@ void config_save() {
   doc["night_start"] = cfg.night_start;
   doc["night_end"] = cfg.night_end;
   doc["ntp_interval_min"] = cfg.ntp_interval_min;
+  doc["flight_range"] = cfg.flight_range;
   JsonArray mons = doc.createNestedArray("monitors");
   for (int i = 0; i < MONITOR_MAX; i++) {
     if (cfg.monitors[i][0]) mons.add(cfg.monitors[i]);

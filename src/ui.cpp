@@ -242,7 +242,7 @@ void ui_screen_clock(int h, int m, int s, int dow, int day, int mon, int yr,
   ui_draw_seconds(s);
   ui_draw_weather(w);
   ui_draw_metrics(metrics, rssi, intIp, extIp, uptime);
-  ui_screen_tag(1, 6);
+  ui_screen_tag(1, 7);
 }
 
 // ---------- Screen 2: 3-day forecast ----------
@@ -283,7 +283,7 @@ void ui_screen_forecast(int h, int m, int s, const Forecast &f) {
     }
     x += 42;
   }
-  ui_screen_tag(3, 6);
+  ui_screen_tag(3, 7);
 }
 
 // ---------- Screen 3: Network ----------
@@ -327,7 +327,7 @@ void ui_screen_network(int rssi, String intIp, String extIp, unsigned long uptim
   tft.setCursor(2, 128);
   snprintf(buf, sizeof(buf), "frag %u%%", (unsigned)ESP.getHeapFragmentation());
   tft.print(buf);
-  ui_screen_tag(4, 6);
+  ui_screen_tag(4, 7);
 }
 
 // ---------- Screen: ESPHome sensors (2nd) ----------
@@ -375,7 +375,7 @@ void ui_screen_esphome() {
     }
     y += 32;
   }
-  ui_screen_tag(2, 6);
+  ui_screen_tag(2, 7);
 }
 
 // ---------- Screen 4: Weather detail ----------
@@ -409,7 +409,7 @@ void ui_screen_detail(int h, int m, int s, const Weather &w) {
     tft.setCursor(8, 44);
     tft.print("no data");
   }
-  ui_screen_tag(5, 6);
+  ui_screen_tag(5, 7);
 }
 
 // ---------- Screen 5: Website monitors ----------
@@ -443,7 +443,84 @@ void ui_screen_monitors() {
     tft.print(buf);
     y += 30;
   }
-  ui_screen_tag(6, 6);
+  ui_screen_tag(6, 7);
+}
+
+// ---------- Screen: Flight radar ----------
+void ui_screen_flight(const FlightData &fd, int rangeNm) {
+  tft.fillScreen(ST7735_BLACK);
+  tft.setTextColor(ST7735_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(2, 2);
+  tft.print("Flight Radar");
+  tft.drawFastHLine(0, 14, 128, ST7735_BLUE);
+
+  const int cx = 64, cy = 82, R = 60;
+
+  if (rangeNm <= 0) {
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(10, 70);
+    tft.print("Disabled (set range)");
+    ui_screen_tag(7, 7);
+    return;
+  }
+
+  // Concentric range rings (outer = full range, inner = half).
+  const uint16_t GRID = tft.color565(0, 60, 0);
+  tft.drawCircle(cx, cy, R, GRID);
+  tft.drawCircle(cx, cy, R / 2, GRID);
+  tft.drawFastHLine(cx - R, cy, 2 * R, GRID);
+  tft.drawFastVLine(cx, cy - R, 2 * R, GRID);
+  tft.fillCircle(cx, cy, 2, ST7735_CYAN);   // you
+  // North marker
+  tft.setTextColor(ST7735_GREEN);
+  tft.setTextSize(1);
+  tft.setCursor(cx - 2, cy - R - 9);
+  tft.print("N");
+
+  // Aircraft: place by bearing (dir) and distance (dst) scaled to range.
+  for (int i = 0; i < fd.count; i++) {
+    const FlightAc &a = fd.ac[i];
+    float rr = a.dst / (float)rangeNm;
+    if (rr > 1.0f) rr = 1.0f;
+    float pr = rr * R;
+    float br = a.dir * 0.017453293f;          // bearing -> radians
+    int ax = cx + (int)(pr * sinf(br));
+    int ay = cy - (int)(pr * cosf(br));       // north = up
+    uint16_t col = (i == 0) ? ST7735_YELLOW : ST7735_WHITE;
+    tft.fillCircle(ax, ay, 2, col);
+    // heading line
+    if (a.track >= 0) {
+      float tr = a.track * 0.017453293f;
+      int hx = ax + (int)(6 * sinf(tr));
+      int hy = ay - (int)(6 * cosf(tr));
+      tft.drawLine(ax, ay, hx, hy, col);
+    }
+  }
+
+  // Footer: count + closest flight details.
+  char buf[32];
+  tft.setTextColor(ST7735_WHITE);
+  tft.setTextSize(1);
+  tft.setCursor(2, cy + R + 6);
+  if (!fd.valid) {
+    tft.print("no data");
+  } else if (fd.count == 0) {
+    snprintf(buf, sizeof(buf), "%dnm: no traffic", rangeNm);
+    tft.print(buf);
+  } else {
+    const FlightAc &c = fd.ac[0];
+    snprintf(buf, sizeof(buf), "%s %.0fnm",
+             c.flight[0] ? c.flight : "----", c.dst);
+    tft.setTextColor(ST7735_YELLOW);
+    tft.print(buf);
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(2, cy + R + 18);
+    snprintf(buf, sizeof(buf), "%dft  %d/%d ac", c.alt, fd.count, fd.total);
+    tft.print(buf);
+  }
+
+  ui_screen_tag(7, 7);
 }
 
 // ---------- Legacy combined (unused by loop, kept for reference) ----------

@@ -7,6 +7,7 @@
 #include "esphome.h"
 #include "ui.h"
 #include "netmon.h"
+#include "flight.h"
 
 #define BTN_PIN D3
 
@@ -14,8 +15,8 @@ volatile bool btnToggle = false;
 bool screenOn = true;
 int lastAutoHour = -1;
 bool drawnStatic = false;
-int screenIndex = 0;          // 0..5 -> screens 1..6
-const int SCREEN_COUNT = 6;
+int screenIndex = 0;          // 0..N -> screens 1..N+1
+const int SCREEN_COUNT = 7;   // last screen (6) is flight radar
 
 void IRAM_ATTR btn_isr() {
   static unsigned long last = 0;
@@ -49,6 +50,7 @@ void setup() {
   netfsm_begin((unsigned long)cfg.weather_interval * 1000UL);
   esphome_begin();
   monitors_begin();
+  flight_begin();
 
   // --- Boot loader: block on a loading screen until weather (+IP) is fetched ---
   const unsigned long BOOT_TIMEOUT = 20000;
@@ -95,6 +97,9 @@ void draw_screen(int h, int m, int s, int dow, int day, int mon, int yr) {
     case 5:
       ui_screen_monitors();
       break;
+    case 6:
+      ui_screen_flight(flight_data(), cfg.flight_range);
+      break;
   }
 }
 
@@ -130,11 +135,14 @@ void loop() {
   netfsm_tick();
   esphome_tick();
   monitors_tick();
+  flight_tick();
 
-  // --- Button cycles screens ---
+  // --- Button cycles screens (skips flight radar when disabled) ---
   if (btnToggle) {
     btnToggle = false;
-    screenIndex = (screenIndex + 1) % SCREEN_COUNT;
+    do {
+      screenIndex = (screenIndex + 1) % SCREEN_COUNT;
+    } while (screenIndex == 6 && cfg.flight_range <= 0);
     drawnStatic = false;
     mlog.printf("[BTN] screen %d/%d\n", screenIndex + 1, SCREEN_COUNT);
   }
@@ -166,6 +174,7 @@ void loop() {
   // Non-blocking network updates (driven by netfsm_tick)
   bool dataUpdated = netfsm_updated();
   bool ehUpdated = esphome_updated();   // consume flag every loop
+  bool flUpdated = flight_updated();    // consume flag every loop
 
   if (screenOn && ui_is_on()) {
     static int lastMin = -1;
@@ -176,6 +185,7 @@ void loop() {
     if (screenIndex == 0 && m != lastMin) needRedraw = true;
     if (dataUpdated) needRedraw = true;
     if (ehUpdated && screenIndex == 1) needRedraw = true;   // ESPHome screen live update
+    if (flUpdated && screenIndex == 6) needRedraw = true;   // flight radar live update
 
     if (needRedraw) {
       draw_screen(h, m, s, dow, day, mon, yr);

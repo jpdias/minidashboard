@@ -9,6 +9,7 @@ struct FlightAc {
   float dir;         // bearing from center (deg, 0=N)
   float track;       // aircraft heading (deg)
   int   alt;         // barometric altitude (ft)
+  char  tag[4];      // class: "CIV" / "COM" / "MIL" / "HEL"
 };
 
 struct FlightData {
@@ -23,3 +24,4 @@ void flight_begin();
 void flight_tick();
 bool flight_updated();        // true once after a refresh
 const FlightData& flight_data();
+int flight_next_refresh_secs();   // seconds until next fetch (0 = fetching now)

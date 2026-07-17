@@ -14,6 +14,8 @@
 <input id="ssid" name="ssid" value="{{SSID}}">
 <label for="pass">WiFi Password</label>
 <input id="pass" name="pass" type="password" placeholder="(unchanged if blank)">
+<label for="hn">Hostname (mDNS: &lt;name&gt;.local)</label>
+<input id="hn" name="hn" value="{{HN}}">
 <label for="lat">Latitude</label>
 <input id="lat" name="lat" value="{{LAT}}">
 <label for="lon">Longitude</label>
@@ -44,11 +46,15 @@
 <label class="cb"><input type="checkbox" name="sc0" {{SC0}}> Clock</label>
 <label class="cb"><input type="checkbox" name="sc1" {{SC1}}> ESPHome</label>
 <label class="cb"><input type="checkbox" name="sc2" {{SC2}}> Forecast</label>
-<label class="cb"><input type="checkbox" name="sc3" {{SC3}}> Network</label>
-<label class="cb"><input type="checkbox" name="sc4" {{SC4}}> Weather Detail</label>
-<label class="cb"><input type="checkbox" name="sc5" {{SC5}}> Monitors</label>
-<label class="cb"><input type="checkbox" name="sc6" {{SC6}}> Flight Radar</label>
-<label class="cb"><input type="checkbox" name="sc7" {{SC7}}> System</label>
+<label class="cb"><input type="checkbox" name="sc3" {{SC3}}> Weather Detail</label>
+<label class="cb"><input type="checkbox" name="sc4" {{SC4}}> Monitors</label>
+<label class="cb"><input type="checkbox" name="sc5" {{SC5}}> Flight Radar</label>
+<label class="cb"><input type="checkbox" name="sc6" {{SC6}}> System</label>
+</div>
+<label>Backlight (transistor on D6)</label>
+<div class="chk">
+<label class="cb"><input type="checkbox" name="blc" {{BLC}}> Enable control</label>
+<label class="cb"><input type="checkbox" name="blh" {{BLH}}> Active-high (ON = HIGH)</label>
 </div>
 <br><br>
 <button type="submit">Save &amp; Reboot</button>

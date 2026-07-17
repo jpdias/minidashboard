@@ -41,6 +41,7 @@ static bool load_json() {
   cfg.lat = doc["lat"] | 0.0f;
   cfg.lon = doc["lon"] | 0.0f;
   strncpy(cfg.tz, doc["tz"] | "Europe/Lisbon", sizeof(cfg.tz) - 1);
+  strncpy(cfg.hostname, doc["hostname"] | "minidash", sizeof(cfg.hostname) - 1);
   cfg.weather_interval = doc["weather_interval"] | 600;
   cfg.show_metrics = doc["show_metrics"] | true;
   strncpy(cfg.esphome_host, doc["esphome_host"] | "", sizeof(cfg.esphome_host) - 1);
@@ -49,6 +50,8 @@ static bool load_json() {
   cfg.night_end = doc["night_end"] | 7;
   cfg.ntp_interval_min = doc["ntp_interval_min"] | 60;
   cfg.flight_range = doc["flight_range"] | 25;
+  cfg.backlight_control = doc["backlight_control"] | false;
+  cfg.backlight_active_high = doc["backlight_active_high"] | true;
   JsonArray scr = doc["screens"];
   if (!scr.isNull()) {
     for (int i = 0; i < SCREEN_MAX; i++) cfg.screen_enabled[i] = true;
@@ -120,6 +123,7 @@ void config_save() {
   doc["lat"] = cfg.lat;
   doc["lon"] = cfg.lon;
   doc["tz"] = cfg.tz;
+  doc["hostname"] = cfg.hostname;
   doc["weather_interval"] = cfg.weather_interval;
   doc["show_metrics"] = cfg.show_metrics;
   doc["esphome_host"] = cfg.esphome_host;
@@ -128,6 +132,8 @@ void config_save() {
   doc["night_end"] = cfg.night_end;
   doc["ntp_interval_min"] = cfg.ntp_interval_min;
   doc["flight_range"] = cfg.flight_range;
+  doc["backlight_control"] = cfg.backlight_control;
+  doc["backlight_active_high"] = cfg.backlight_active_high;
   JsonArray scr = doc.createNestedArray("screens");
   for (int i = 0; i < SCREEN_MAX; i++) scr.add(cfg.screen_enabled[i]);
   JsonArray mons = doc.createNestedArray("monitors");

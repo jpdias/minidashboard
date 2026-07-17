@@ -30,6 +30,13 @@ bool flight_updated() {
   return false;
 }
 
+int flight_next_refresh_secs() {
+  if (phase != P_IDLE) return 0;   // fetch in progress
+  unsigned long elapsed = millis() - lastCycle;
+  if (elapsed >= FL_INTERVAL) return 0;
+  return (int)((FL_INTERVAL - elapsed + 999) / 1000);
+}
+
 void flight_begin() {
   phase = P_IDLE;
   first = true;
@@ -64,16 +71,43 @@ static int insert_sorted(FlightAc *arr, int n, const FlightAc &a) {
   return n;
 }
 
+// Derive a short class tag from the ADS-B emitter category + military flag.
+//   dbFlags bit0 -> military (wins over everything).
+//   A7 -> helicopter; A3/A4/A5 -> commercial (large/heavy); A1/A2/A6 -> light GA;
+//   B1 -> glider; B2 -> balloon/airship; B4 -> ultralight; B6 -> drone/UAV.
+//   Anything unknown -> civilian.
+static void classify(const char *cat, long dbFlags, char *out) {
+  if (dbFlags & 1) { strcpy(out, "MIL"); return; }
+  char a = cat[0], b = cat[1];
+  if (a == 'A') {
+    switch (b) {
+      case '7':               strcpy(out, "HEL"); return;  // rotorcraft
+      case '3': case '4': case '5': strcpy(out, "COM"); return;  // large/heavy
+      case '1': case '2': case '6': strcpy(out, "LGT"); return;  // light GA
+    }
+  } else if (a == 'B') {
+    switch (b) {
+      case '1': strcpy(out, "GLI"); return;  // glider/sailplane
+      case '2': strcpy(out, "BAL"); return;  // lighter-than-air
+      case '4': strcpy(out, "ULT"); return;  // ultralight/paraglider
+      case '6': strcpy(out, "UAV"); return;  // drone
+    }
+  }
+  strcpy(out, "CIV");
+}
+
 // Parse straight from the TLS stream so we never buffer the whole body.
 // The filter drops every field we don't need, keeping the working doc tiny.
 static void parse(Stream &s) {
-  StaticJsonDocument<160> filter;
+  StaticJsonDocument<192> filter;
   JsonObject fac = filter["aircraft"].createNestedObject();
   fac["flight"] = true;
   fac["alt_baro"] = true;
   fac["track"] = true;
   fac["dst"] = true;
   fac["dir"] = true;
+  fac["category"] = true;   // ADS-B emitter category (A1..A7, B1..)
+  fac["dbFlags"] = true;    // bit 0 = military
 
   DynamicJsonDocument doc(3072);
   DeserializationError err =
@@ -93,6 +127,7 @@ static void parse(Stream &s) {
     a.dir = o["dir"] | 0.0f;
     a.track = o["track"] | -1.0f;
     a.alt = o["alt_baro"] | 0;
+    classify(o["category"] | "", o["dbFlags"] | 0, a.tag);
     n = insert_sorted(gData.ac, n, a);
   }
   gData.count = n;

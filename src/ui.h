@@ -23,11 +23,12 @@ void ui_draw_uptime(unsigned long uptime);
 void ui_screen_clock(int h, int m, int s, int dow, int day, int mon, int yr,
                      const Weather &w, bool metrics, int rssi, String intIp, String extIp, unsigned long uptime);
 void ui_screen_forecast(int h, int m, int s, const Forecast &f);
-void ui_screen_network(int rssi, String intIp, String extIp, unsigned long uptime);
 void ui_screen_detail(int h, int m, int s, const Weather &w);
 void ui_screen_monitors();
 void ui_screen_esphome();
 void ui_screen_flight(const FlightData &fd, int rangeNm);
+void ui_draw_flight_countdown();
+uint16_t ui_flight_tag_color(const char *tag);
 void ui_draw_flightinfo(const FlightData &fd);   // closest-flight box on Clock screen
 void ui_screen_system(int rssi, String intIp, unsigned long uptime);
 void ui_system_update(int rssi, unsigned long uptime);   // refresh dynamic values

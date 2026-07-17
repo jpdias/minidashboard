@@ -290,10 +290,13 @@ void ui_draw_flightinfo(const FlightData &fd) {
     return;
   }
   const FlightAc &c = fd.ac[0];
+  tft.setTextColor(ui_flight_tag_color(c.tag));
+  snprintf(buf, sizeof(buf), "%s ", c.tag);
+  tft.print(buf);
   tft.setTextColor(ST7735_YELLOW);
   tft.print(c.flight[0] ? c.flight : "----");
   tft.setTextColor(ST7735_WHITE);
-  snprintf(buf, sizeof(buf), " %.0fnm %dft", c.dst, c.alt);
+  snprintf(buf, sizeof(buf), " %.0fnm", c.dst);
   tft.print(buf);
 }
 
@@ -304,7 +307,7 @@ void ui_screen_clock(int h, int m, int s, int dow, int day, int mon, int yr,
   ui_draw_weather(w);
   ui_draw_flightinfo(flight_data());
   ui_draw_metrics(metrics, rssi, intIp, extIp, uptime);
-  ui_screen_tag(1, 8);
+  ui_screen_tag(1, 7);
 }
 
 // ---------- Screen 2: 3-day forecast ----------
@@ -345,51 +348,7 @@ void ui_screen_forecast(int h, int m, int s, const Forecast &f) {
     }
     x += 42;
   }
-  ui_screen_tag(3, 8);
-}
-
-// ---------- Screen 3: Network ----------
-void ui_screen_network(int rssi, String intIp, String extIp, unsigned long uptime) {
-  tft.fillScreen(ST7735_BLACK);
-  tft.setTextColor(ST7735_CYAN);
-  tft.setTextSize(1);
-  tft.setCursor(2, 2);
-  tft.print("Network");
-  tft.drawFastHLine(0, 14, 128, ST7735_BLUE);
-
-  char buf[32];
-  int bars = constrain(map(rssi, -90, -30, 0, 5), 0, 5);
-  tft.setTextColor(ST7735_MAGENTA);
-  tft.setCursor(2, 22);
-  tft.print("WiFi ");
-  for (int i = 0; i < 5; i++) tft.print(i < bars ? "#" : ".");
-  tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(2, 38);
-  tft.print("LAN ");
-  tft.print(intIp);
-  tft.setCursor(2, 52);
-  tft.print("WAN ");
-  tft.print(extIp.length() ? extIp : "-");
-
-  tft.setTextColor(ST7735_GREEN);
-  tft.setTextSize(2);
-  tft.setCursor(2, 80);
-  snprintf(buf, sizeof(buf), "%ld%% sig", (long)map(rssi, -90, -30, 0, 100));
-  tft.print(buf);
-  tft.setTextSize(1);
-  tft.setTextColor(ST7735_WHITE);
-  tft.setCursor(2, 104);
-  unsigned long up = uptime / 1000;
-  snprintf(buf, sizeof(buf), "up %02lu:%02lu:%02lu",
-           up / 3600, (up % 3600) / 60, up % 60);
-  tft.print(buf);
-  tft.setCursor(2, 116);
-  snprintf(buf, sizeof(buf), "heap %u B", (unsigned)ESP.getFreeHeap());
-  tft.print(buf);
-  tft.setCursor(2, 128);
-  snprintf(buf, sizeof(buf), "frag %u%%", (unsigned)ESP.getHeapFragmentation());
-  tft.print(buf);
-  ui_screen_tag(4, 8);
+  ui_screen_tag(3, 7);
 }
 
 // ---------- Screen: ESPHome sensors (2nd) ----------
@@ -437,7 +396,7 @@ void ui_screen_esphome() {
     }
     y += 32;
   }
-  ui_screen_tag(2, 8);
+  ui_screen_tag(2, 7);
 }
 
 // ---------- Screen 4: Weather detail ----------
@@ -471,7 +430,7 @@ void ui_screen_detail(int h, int m, int s, const Weather &w) {
     tft.setCursor(8, 44);
     tft.print("no data");
   }
-  ui_screen_tag(5, 8);
+  ui_screen_tag(4, 7);
 }
 
 // ---------- Screen 5: Website monitors ----------
@@ -505,7 +464,20 @@ void ui_screen_monitors() {
     tft.print(buf);
     y += 30;
   }
-  ui_screen_tag(6, 8);
+  ui_screen_tag(5, 7);
+}
+
+// Color code for a flight class tag.
+uint16_t ui_flight_tag_color(const char *tag) {
+  if (!strcmp(tag, "MIL")) return ST7735_RED;
+  if (!strcmp(tag, "HEL")) return ST7735_MAGENTA;
+  if (!strcmp(tag, "COM")) return ST7735_CYAN;
+  if (!strcmp(tag, "LGT")) return ST7735_GREEN;
+  if (!strcmp(tag, "GLI")) return tft.color565(0, 255, 180);   // teal
+  if (!strcmp(tag, "BAL")) return tft.color565(255, 140, 0);   // orange
+  if (!strcmp(tag, "ULT")) return tft.color565(180, 255, 0);   // lime
+  if (!strcmp(tag, "UAV")) return tft.color565(255, 0, 140);   // pink
+  return ST7735_WHITE;   // CIV / unknown
 }
 
 // ---------- Screen: Flight radar ----------
@@ -523,7 +495,7 @@ void ui_screen_flight(const FlightData &fd, int rangeNm) {
     tft.setTextColor(ST7735_WHITE);
     tft.setCursor(10, 70);
     tft.print("Disabled (set range)");
-    ui_screen_tag(7, 8);
+    ui_screen_tag(6, 7);
     return;
   }
 
@@ -549,7 +521,7 @@ void ui_screen_flight(const FlightData &fd, int rangeNm) {
     float br = a.dir * 0.017453293f;          // bearing -> radians
     int ax = cx + (int)(pr * sinf(br));
     int ay = cy - (int)(pr * cosf(br));       // north = up
-    uint16_t col = (i == 0) ? ST7735_YELLOW : ST7735_WHITE;
+    uint16_t col = (i == 0) ? ST7735_YELLOW : ui_flight_tag_color(a.tag);
     tft.fillCircle(ax, ay, 2, col);
     // heading line
     if (a.track >= 0) {
@@ -572,8 +544,8 @@ void ui_screen_flight(const FlightData &fd, int rangeNm) {
     tft.print(buf);
   } else {
     const FlightAc &c = fd.ac[0];
-    snprintf(buf, sizeof(buf), "%s %.0fnm",
-             c.flight[0] ? c.flight : "----", c.dst);
+    snprintf(buf, sizeof(buf), "[%s] %s %.0fnm",
+             c.tag, c.flight[0] ? c.flight : "----", c.dst);
     tft.setTextColor(ST7735_YELLOW);
     tft.print(buf);
     tft.setTextColor(ST7735_WHITE);
@@ -582,7 +554,26 @@ void ui_screen_flight(const FlightData &fd, int rangeNm) {
     tft.print(buf);
   }
 
-  ui_screen_tag(7, 8);
+  ui_draw_flight_countdown();
+  ui_screen_tag(6, 7);
+}
+
+// Next-refresh countdown in the bottom-right corner of the radar.
+// Fixed-width clear so shrinking strings (e.g. "10s" -> "9s") don't leave
+// stale digits behind. Right-aligned within a 24px box.
+void ui_draw_flight_countdown() {
+  char buf[12];
+  int secs = flight_next_refresh_secs();
+  if (secs > 0) snprintf(buf, sizeof(buf), "%ds", secs);
+  else          snprintf(buf, sizeof(buf), "...");
+  const int boxW = 24;
+  const int boxX = 128 - boxW;
+  tft.fillRect(boxX, 150, boxW, 10, ST7735_BLACK);
+  int w = (int)strlen(buf) * 6;
+  tft.setTextSize(1);
+  tft.setTextColor(ST7735_CYAN);
+  tft.setCursor(128 - w, 150);
+  tft.print(buf);
 }
 
 // ---------- Screen: System / technical info ----------
@@ -621,7 +612,7 @@ void ui_screen_system(int rssi, String intIp, unsigned long uptime) {
   tft.setCursor(44, 116); snprintf(buf, sizeof(buf), "%uKB", ESP.getFlashChipRealSize() / 1024); tft.print(buf);
 
   ui_system_update(rssi, uptime);
-  ui_screen_tag(8, 8);
+  ui_screen_tag(7, 7);
 }
 
 void ui_system_update(int rssi, unsigned long uptime) {

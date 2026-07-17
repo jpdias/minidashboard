@@ -3,11 +3,14 @@
 #include "nettime.h"
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
+#include <ESP8266mDNS.h>
 #include <LittleFS.h>
 
 WiFiManager wm;
 static ESP8266WebServer server(80);
 static ESP8266HTTPUpdateServer httpUpdater;
+
+static String sanitize_hostname(const char *in);
 
 // HTML escape for safe form values
 static String htmlEscape(const String &s) {
@@ -80,6 +83,7 @@ static void handle_root() {
   // flash, not in cfg. Fall back to the actively-connected SSID.
   String ssid = strlen(cfg.wifi_ssid) ? String(cfg.wifi_ssid) : WiFi.SSID();
   html.replace("{{SSID}}", htmlEscape(ssid));
+  html.replace("{{HN}}", htmlEscape(cfg.hostname));
   html.replace("{{LAT}}", String(cfg.lat, 4));
   html.replace("{{LON}}", String(cfg.lon, 4));
   html.replace("{{TZ_OPTIONS}}", tz_options());
@@ -92,6 +96,8 @@ static void handle_root() {
   html.replace("{{EHS}}", htmlEscape(cfg.esphome_sensors));
   html.replace("{{MON}}", htmlEscape(monitors_to_csv()));
   html.replace("{{FR}}", String(cfg.flight_range));
+  html.replace("{{BLC}}", cfg.backlight_control ? "checked" : "");
+  html.replace("{{BLH}}", cfg.backlight_active_high ? "checked" : "");
   for (int i = 0; i < SCREEN_MAX; i++) {
     html.replace("{{SC" + String(i) + "}}", cfg.screen_enabled[i] ? "checked" : "");
   }
@@ -114,6 +120,10 @@ static void handle_save() {
   if (server.hasArg("lat")) cfg.lat = server.arg("lat").toFloat();
   if (server.hasArg("lon")) cfg.lon = server.arg("lon").toFloat();
   if (server.hasArg("tz")) strncpy(cfg.tz, server.arg("tz").c_str(), sizeof(cfg.tz) - 1);
+  if (server.hasArg("hn")) {
+    String hn = sanitize_hostname(server.arg("hn").c_str());
+    strncpy(cfg.hostname, hn.c_str(), sizeof(cfg.hostname) - 1);
+  }
   if (server.hasArg("wi")) {
     int wi = server.arg("wi").toInt();
     if (wi >= 60) cfg.weather_interval = wi;
@@ -125,6 +135,8 @@ static void handle_save() {
   if (server.hasArg("eh")) strncpy(cfg.esphome_host, server.arg("eh").c_str(), sizeof(cfg.esphome_host) - 1);
   if (server.hasArg("ehs")) strncpy(cfg.esphome_sensors, server.arg("ehs").c_str(), sizeof(cfg.esphome_sensors) - 1);
   if (server.hasArg("fr")) cfg.flight_range = constrain(server.arg("fr").toInt(), 0, 250);
+  cfg.backlight_control = server.hasArg("blc");
+  cfg.backlight_active_high = server.hasArg("blh");
   if (server.hasArg("scr")) {
     for (int i = 0; i < SCREEN_MAX; i++)
       cfg.screen_enabled[i] = server.hasArg("sc" + String(i));
@@ -153,8 +165,25 @@ static void handle_save() {
   ESP.restart();
 }
 
+// Sanitize a user hostname to a valid DNS label: lowercase alphanumerics and
+// hyphens only, no leading/trailing hyphen, non-empty. Falls back to "minidash".
+static String sanitize_hostname(const char *in) {
+  String out;
+  for (const char *p = in; *p && out.length() < 24; p++) {
+    char c = *p;
+    if (c >= 'A' && c <= 'Z') c = c - 'A' + 'a';
+    if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') out += c;
+  }
+  while (out.length() && out[0] == '-') out.remove(0, 1);
+  while (out.length() && out[out.length() - 1] == '-') out.remove(out.length() - 1);
+  if (out.length() == 0) out = "minidash";
+  return out;
+}
+
 void portal_begin() {
   config_load();
+
+  WiFi.hostname(sanitize_hostname(cfg.hostname));
 
   if (!LittleFS.begin()) {
     mlog.println("[PORTAL] LittleFS mount failed (run 'pio run -t uploadfs')");
@@ -230,9 +259,19 @@ void portal_begin() {
   httpUpdater.setup(&server);   // OTA: firmware + filesystem at /update
   server.begin();
   mlog.println("[PORTAL] admin UI started at http://" + WiFi.localIP().toString());
+
+  // mDNS: reachable as http://<hostname>.local on the LAN.
+  String host = sanitize_hostname(cfg.hostname);
+  if (MDNS.begin(host)) {
+    MDNS.addService("http", "tcp", 80);
+    mlog.println("[MDNS] responder started at http://" + host + ".local");
+  } else {
+    mlog.println("[MDNS] responder failed to start");
+  }
 }
 
 void portal_handle() {
   wm.process();
   server.handleClient();
+  MDNS.update();
 }

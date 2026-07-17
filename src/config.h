@@ -11,7 +11,7 @@
 #define MONITOR_LEN    64
 
 #define ESPHOME_SENSORS_LEN 192
-#define SCREEN_MAX 8   // Clock, ESPHome, Forecast, Network, Detail, Monitors, Flight, System
+#define SCREEN_MAX 7   // Clock, ESPHome, Forecast, Detail, Monitors, Flight, System
 
 struct Config {
   char wifi_ssid[33] = {0};
@@ -19,6 +19,7 @@ struct Config {
   float lat = 0.0f;
   float lon = 0.0f;
   char tz[32] = "Europe/Lisbon";
+  char hostname[24] = "minidash";   // mDNS / DHCP name (http://<hostname>.local)
   int   weather_interval = 600;  // seconds
   bool  show_metrics = true;
   char  monitors[MONITOR_MAX][MONITOR_LEN] = {0};
@@ -29,7 +30,9 @@ struct Config {
   int   night_end = 7;            // hour screen turns on
   int   ntp_interval_min = 60;    // NTP resync period (minutes)
   int   flight_range = 25;        // flight radar range in nm (0 disables screen)
-  bool  screen_enabled[SCREEN_MAX] = { true, true, true, true, true, true, true, true };
+  bool  screen_enabled[SCREEN_MAX] = { true, true, true, true, true, true, true };
+  bool  backlight_control = false;   // drive backlight via transistor on D6/GPIO12
+  bool  backlight_active_high = true;// GPIO level that turns the backlight ON
 };
 
 extern Config cfg;

@@ -10,13 +10,49 @@
 #include "flight.h"
 
 #define BTN_PIN D3
+#define BL_PIN  D6            // backlight transistor gate/base (see README)
+
+#define BTN_LONG_MS 600       // press >= this = long press (display on/off)
 
 volatile bool btnToggle = false;
 bool screenOn = true;
 int lastAutoHour = -1;
 bool drawnStatic = false;
 int screenIndex = 0;          // 0..N -> screens 1..N+1
-const int SCREEN_COUNT = 8;   // 6 = flight radar, 7 = system info
+const int SCREEN_COUNT = 7;   // 5 = flight radar, 6 = system info
+
+// Display off sources: manualOff (long press) and nightOff (schedule). Either
+// one turns the whole display off (screen contents + backlight). A day/night
+// transition clears the manual override so automatic control resumes.
+bool manualOff = false;
+bool nightOff = false;
+
+// Drive the backlight pin for the given state, honoring polarity. No-op unless
+// backlight control is enabled in config.
+static void backlight_write(bool on) {
+  if (!cfg.backlight_control) return;
+  digitalWrite(BL_PIN, (on == cfg.backlight_active_high) ? HIGH : LOW);
+}
+
+// Turn the whole display (screen + backlight) on or off based on the current
+// override state. Forces a redraw when turning back on.
+static void display_refresh() {
+  bool on = !manualOff && !nightOff;
+  if (on && !screenOn) {
+    screenOn = true;
+    ui_poweron();
+    drawnStatic = false;
+    backlight_write(true);
+    mlog.println("[DISP] ON");
+  } else if (!on && screenOn) {
+    screenOn = false;
+    ui_poweroff();
+    backlight_write(false);
+    mlog.println("[DISP] OFF");
+  } else {
+    backlight_write(on);   // keep backlight in sync even if screen state matched
+  }
+}
 
 void IRAM_ATTR btn_isr() {
   static unsigned long last = 0;
@@ -43,6 +79,13 @@ void setup() {
   pinMode(BTN_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(BTN_PIN), btn_isr, FALLING);
 
+  // Backlight transistor control (optional). Default ON at boot so the panel
+  // is never dark during startup even before config takes effect.
+  if (cfg.backlight_control) {
+    pinMode(BL_PIN, OUTPUT);
+    backlight_write(true);
+  }
+
   ui_begin();
   time_begin();
   time_update();           // NTP sync + TZ
@@ -55,7 +98,7 @@ void setup() {
   // Land on the first enabled screen (fall back to Clock if none enabled).
   screenIndex = 0;
   for (int i = 0; i < SCREEN_COUNT; i++) {
-    bool disabled = !cfg.screen_enabled[i] || (i == 6 && cfg.flight_range <= 0);
+    bool disabled = !cfg.screen_enabled[i] || (i == 5 && cfg.flight_range <= 0);
     if (!disabled) { screenIndex = i; break; }
   }
 
@@ -96,18 +139,15 @@ void draw_screen(int h, int m, int s, int dow, int day, int mon, int yr) {
       ui_screen_forecast(h, m, s, forecast);
       break;
     case 3:
-      ui_screen_network(WiFi.RSSI(), WiFi.localIP().toString(), extIp, millis());
-      break;
-    case 4:
       ui_screen_detail(h, m, s, weather);
       break;
-    case 5:
+    case 4:
       ui_screen_monitors();
       break;
-    case 6:
+    case 5:
       ui_screen_flight(flight_data(), cfg.flight_range);
       break;
-    case 7:
+    case 6:
       ui_screen_system(WiFi.RSSI(), WiFi.localIP().toString(), millis());
       break;
   }
@@ -147,31 +187,64 @@ void loop() {
   monitors_tick();
   flight_tick();
 
-  // --- Button cycles screens (skips disabled screens; flight also needs range) ---
+  // --- Button: short press cycles screens, long press toggles the display ---
+  // The ISR flags a falling edge; we then poll the pin to measure hold time.
+  static bool btnHeld = false;
+  static unsigned long btnStart = 0;
+  static bool btnLongDone = false;
   if (btnToggle) {
     btnToggle = false;
-    for (int n = 0; n < SCREEN_COUNT; n++) {
-      screenIndex = (screenIndex + 1) % SCREEN_COUNT;
-      bool disabled = !cfg.screen_enabled[screenIndex] ||
-                      (screenIndex == 6 && cfg.flight_range <= 0);
-      if (!disabled) break;
+    btnHeld = true;
+    btnLongDone = false;
+    btnStart = millis();
+  }
+  if (btnHeld) {
+    bool down = (digitalRead(BTN_PIN) == LOW);
+    if (down && !btnLongDone && millis() - btnStart >= BTN_LONG_MS) {
+      // Long press fires as soon as the threshold is reached (no need to wait
+      // for release). Toggle the whole display (screen + backlight) off/on and
+      // clear any night override.
+      btnLongDone = true;
+      manualOff = !manualOff;
+      nightOff = false;
+      display_refresh();
+      mlog.printf("[BTN] long press -> display %s\n", manualOff ? "OFF" : "ON");
     }
-    drawnStatic = false;
-    mlog.printf("[BTN] screen %d/%d\n", screenIndex + 1, SCREEN_COUNT);
+    if (!down) {
+      // Released: if it never became a long press, treat as a screen cycle.
+      if (!btnLongDone) {
+        for (int n = 0; n < SCREEN_COUNT; n++) {
+          screenIndex = (screenIndex + 1) % SCREEN_COUNT;
+          bool disabled = !cfg.screen_enabled[screenIndex] ||
+                          (screenIndex == 5 && cfg.flight_range <= 0);
+          if (!disabled) break;
+        }
+        drawnStatic = false;
+        mlog.printf("[BTN] screen %d/%d\n", screenIndex + 1, SCREEN_COUNT);
+      }
+      btnHeld = false;
+    }
   }
 
   int h, m, s, dow, day, mon, yr;
   time_now(h, m, s, dow, day, mon, yr);
 
   // --- Auto night sleep (configurable hours) ---
+  // On a day/night transition, update nightOff and clear the manual override so
+  // the schedule takes back control. display_refresh() then blanks/restores the
+  // whole display (screen contents + backlight) together.
   if (h != lastAutoHour) {
     lastAutoHour = h;
     int ns = cfg.night_start, ne = cfg.night_end;
     bool night = (ns == ne) ? false
                : (ns < ne)  ? (h >= ns && h < ne)          // same-day window
                             : (h >= ns || h < ne);          // wraps midnight
-    if (night && screenOn) { screenOn = false; ui_poweroff(); mlog.println("[AUTO] night -> screen OFF"); }
-    else if (!night && !screenOn) { screenOn = true; ui_poweron(); drawnStatic = false; mlog.println("[AUTO] day -> screen ON"); }
+    if (night != nightOff) {
+      nightOff = night;
+      manualOff = false;
+      display_refresh();
+      mlog.printf("[AUTO] %s -> display %s\n", night ? "night" : "day", night ? "OFF" : "ON");
+    }
   }
 
   // Periodic heap health log (throttled).
@@ -198,7 +271,7 @@ void loop() {
     if (screenIndex == 0 && m != lastMin) needRedraw = true;
     if (dataUpdated) needRedraw = true;
     if (ehUpdated && screenIndex == 1) needRedraw = true;   // ESPHome screen live update
-    if (flUpdated && screenIndex == 6) needRedraw = true;   // flight radar live update
+    if (flUpdated && screenIndex == 5) needRedraw = true;   // flight radar live update
 
     if (needRedraw) {
       draw_screen(h, m, s, dow, day, mon, yr);
@@ -214,7 +287,13 @@ void loop() {
       }
       // Refresh only the flight box when new flight data arrives (no full redraw).
       if (flUpdated) ui_draw_flightinfo(flight_data());
-    } else if (screenIndex == 7) {
+    } else if (screenIndex == 5) {
+      // Flight radar: tick the next-refresh countdown once per second.
+      if (millis() - lastSec >= 1000) {
+        lastSec = millis();
+        ui_draw_flight_countdown();
+      }
+    } else if (screenIndex == 6) {
       // System screen: refresh dynamic values once per second (isolated boxes).
       if (millis() - lastSec >= 1000) {
         lastSec = millis();

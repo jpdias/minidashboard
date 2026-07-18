@@ -1,9 +1,9 @@
 #pragma once
 #include <Arduino.h>
 
-// Sun + Moon rise/set and moon phase for the current local day, fetched once per
-// day from the USNO Astronomical Applications API (rstt/oneday). Also computes an
-// approximate phase fraction (0..1) from the illumination for drawing a glyph.
+// Sun + Moon rise/set, moon phase and illumination for the current local day,
+// fetched once per day from sunrisesunset.io over plain HTTP (no TLS, no API key).
+// The API returns a ready-made moon_phase_value (0..1) used for the glyph.
 struct MoonInfo {
   char  sunrise[6] = {0};    // "HH:MM" local, empty if none
   char  sunset[6] = {0};

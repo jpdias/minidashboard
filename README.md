@@ -203,12 +203,12 @@ has an upload form. Both **firmware** (`firmware.bin`) and **filesystem**
 - ESPHome: REST API at `http://<host>/sensor/<slug>` (enable `api: rest: true` in the ESPHome device YAML)
 - Monitors: HTTP reachability probes
 - Flights: adsb.fi open data API over TLS (`opendata.adsb.fi`), ~15s refresh
-- Sun/moon: USNO Astronomical Applications API over TLS (`aa.usno.navy.mil`) —
-  sunrise/set, moonrise/set, moon phase and illumination. Fetched **synchronously at
-  boot** (the first TLS session, running alone) and then once more per local day via
-  the non-blocking FSM. Because the boot fetch blocks and runs before the flight
-  radar's TLS session, the two never collide — this fixed the intermittent
-  "moon sometimes doesn't load" race.
+- Sun/moon: [sunrisesunset.io](https://sunrisesunset.io) over **plain HTTP**
+  (`api.sunrisesunset.io`, no API key, no TLS). Returns sunrise/set, moonrise/set,
+  moon phase name + illumination, and a ready-made `moon_phase_value` (0..1) for the
+  glyph. Fetched **synchronously at boot** and then once per local day via the
+  non-blocking FSM. Plain HTTP makes it near-instant and means it no longer needs a
+  BearSSL/TLS session (so it doesn't contend with the flight radar's TLS client).
 - Forecast: Open-Meteo, fetched at boot and then **twice a day** (midnight + noon, local).
 
 ## Notes
@@ -283,11 +283,18 @@ reboot. **Fix:** the save response sends `Connection: close`, flushes and stops 
 socket, then `ESP.restart()` after 200ms; `saved.html` shows a 10s JS countdown that
 redirects back to `/`.
 
+### Moon (sunrisesunset.io) was slow over TLS / USNO
+The original sun/moon source was the USNO API over **BearSSL/TLS** — the ESP8266
+spent seconds on the handshake and the TLS buffers ate ~22KB of the 80KB heap, which
+also collided with the flight radar's TLS client (the "moon sometimes doesn't load"
+race). **Fix:** switched to `sunrisesunset.io` over **plain HTTP** (port 80, no key,
+no TLS). It returns sun + moon in one fast request and needs no BearSSL session, so
+the TLS lock is now flight-only and the boot "Sun / Moon" step is near-instant.
+
 ### Moon fetched with the wrong (epoch) date at boot
-Before NTP sync, `time()` returns 1970, so the moon fetch used the wrong date.
-**Fix:** gate the fetch behind `time_is_synced()` (plus an ~8s boot grace) so it only
-runs once the clock is real. The timezone offset is computed via a
-`mktime(gmtime(now))` trick because this newlib build lacks `tm_gmtoff`.
+Before NTP sync, `time()` returns 1970, so the fetch used the wrong date.
+**Fix:** gate the fetch behind `time_is_synced()` so it only runs once the clock is
+real. The local date is taken from `time_now()` and sent as `date=YYYY-MM-DD`.
 
 ### Text rendered double-size unexpectedly
 Adafruit GFX text size is **sticky** — after drawing the temperature at

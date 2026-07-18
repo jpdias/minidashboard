@@ -40,10 +40,9 @@ static String monitors_to_csv() {
   for (int i = 0; i < MONITOR_MAX; i++) {
     if (cfg.monitors[i][0]) {
       m += cfg.monitors[i];
-      m += ",";
+      m += "\n";
     }
   }
-  if (m.length() > 0) m.remove(m.length() - 1);
   return m;
 }
 
@@ -103,12 +102,41 @@ static void handle_root() {
   }
   html.replace("{{IP}}", WiFi.localIP().toString());
   html.replace("{{LOG}}", htmlEscape(log_text()));
+  html.replace("{{CFGJSON}}", htmlEscape(config_to_json()));
   server.send(200, "text/html", html);
 }
 
 // Raw log text for the auto-refreshing panel on the config page.
 static void handle_logtext() {
   server.send(200, "text/plain", log_text());
+}
+
+// GET /config.json -> pretty JSON view of the current config (read-only fetch).
+static void handle_config_raw() {
+  server.send(200, "application/json", config_to_json());
+}
+
+// POST /config.json -> apply an edited JSON document with strict validation.
+static void handle_config_edit() {
+  String body = server.arg("plain");
+  if (body.length() == 0 && server.hasArg("config")) body = server.arg("config");
+  if (body.length() == 0) { server.send(400, "text/plain", "empty body"); return; }
+  String err;
+  if (!config_apply_json(body, err)) {
+    server.send(400, "text/plain", "Config not applied: " + err);
+    mlog.println("[CFG] edit rejected: " + err);
+    return;
+  }
+  config_save();
+  mlog.println("[CFG] applied edited config.json");
+  String html = loadTemplate("/saved.html");
+  if (html.length() == 0) html = "<html><body><h3>Saved. Rebooting...</h3></body></html>";
+  server.sendHeader("Connection", "close");
+  server.send(200, "text/html", html);
+  server.client().flush();
+  server.client().stop();
+  delay(200);
+  ESP.restart();
 }
 
 static void handle_save() {
@@ -144,6 +172,8 @@ static void handle_save() {
   if (server.hasArg("mon")) {
     String m = server.arg("mon");
     m.replace(" ", "");
+    m.replace("\n", ",");
+    m.replace("\r", "");
     for (int i = 0; i < MONITOR_MAX; i++) cfg.monitors[i][0] = 0;
     int idx = 0, start = 0;
     for (unsigned int i = 0; i <= (unsigned int)m.length() && idx < MONITOR_MAX; i++) {
@@ -261,6 +291,8 @@ void portal_begin() {
   server.on("/style.css", handle_style);
   server.on("/save", HTTP_POST, handle_save);
   server.on("/logtext", handle_logtext);
+  server.on("/config.json", HTTP_GET, handle_config_raw);
+  server.on("/config.json", HTTP_POST, handle_config_edit);
   httpUpdater.setup(&server);   // OTA: firmware + filesystem at /update
   server.begin();
   mlog.println("[PORTAL] admin UI started at http://" + WiFi.localIP().toString());

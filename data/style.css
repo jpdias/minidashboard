@@ -16,6 +16,11 @@ label{font-weight:700;font-size:.9em;display:block}
 .term{background:#111;color:#0f0;font:12px monospace;white-space:pre-wrap;word-break:break-all;overflow-wrap:anywhere;padding:10px;border-radius:.3rem;height:78vh;min-height:300px;overflow-y:auto;text-align:left}
 hr{border:0;border-top:1px solid #eee;margin:15px 0}
 .foot{color:#777;font-size:.8em;margin-top:15px;text-align:left}
+details.cfgraw{margin-top:15px;border:1px solid #e3e3e3;border-radius:.3rem;padding:10px;background:#fafafa;text-align:left}
+details.cfgraw>summary{cursor:pointer;font-weight:700;font-size:.95em}
+details.cfgraw .hint{color:#777;font-size:.8em;margin:8px 0}
+details.cfgraw textarea{font-family:monospace;font-size:12px;white-space:pre;width:100%;background:#fff;color:#111}
+details.cfgraw .cfgmsg{display:block;margin-top:8px;font-size:.85em;font-weight:700}
 
 @media (prefers-color-scheme:dark){
   body{background:#12151a;color:#e6e6e6}
@@ -25,5 +30,7 @@ hr{border:0;border-top:1px solid #eee;margin:15px 0}
   .msg{background:#1c2029;border-color:#333}
   hr{border-top-color:#2a2f3a}
   .foot{color:#8a909c}
+  details.cfgraw{background:#1a1e26;border-color:#2a2f3a}
+  details.cfgraw textarea{background:#0e1116;color:#e6e6e6}
   button,input[type=submit],input[type=button]{background:#1fa3ec;color:#fff}
 }

@@ -153,3 +153,134 @@ void config_reset() {
   apply_defaults();
   config_save();
 }
+
+String config_to_json() {
+  DynamicJsonDocument doc(4096);
+  doc["wifi_ssid"] = cfg.wifi_ssid;
+  doc["wifi_pass"] = cfg.wifi_pass;
+  doc["lat"] = cfg.lat;
+  doc["lon"] = cfg.lon;
+  doc["tz"] = cfg.tz;
+  doc["hostname"] = cfg.hostname;
+  doc["weather_interval"] = cfg.weather_interval;
+  doc["show_metrics"] = cfg.show_metrics;
+  doc["esphome_host"] = cfg.esphome_host;
+  doc["esphome_sensors"] = cfg.esphome_sensors;
+  doc["ntp_interval_min"] = cfg.ntp_interval_min;
+  doc["night_start"] = cfg.night_start;
+  doc["night_end"] = cfg.night_end;
+  doc["flight_range"] = cfg.flight_range;
+  doc["backlight_control"] = cfg.backlight_control;
+  doc["backlight_active_high"] = cfg.backlight_active_high;
+  JsonArray scr = doc.createNestedArray("screens");
+  for (int i = 0; i < SCREEN_MAX; i++) scr.add(cfg.screen_enabled[i]);
+  JsonArray mons = doc.createNestedArray("monitors");
+  for (int i = 0; i < MONITOR_MAX; i++)
+    if (cfg.monitors[i][0]) mons.add(cfg.monitors[i]);
+  String s;
+  serializeJsonPretty(doc, s);
+  return s;
+}
+
+// Copy a C-string value into a fixed buffer, length-capped (safe). Returns false if
+// the source was non-empty but longer than the buffer (still copies what fits).
+static bool copy_capped(char *dst, size_t dstLen, const char *src, const char *fallback) {
+  if (!src || !*src) {
+    if (fallback) { strncpy(dst, fallback, dstLen - 1); dst[dstLen - 1] = 0; }
+    else dst[0] = 0;
+    return true;
+  }
+  strncpy(dst, src, dstLen - 1);
+  dst[dstLen - 1] = 0;
+  return strlen(src) < dstLen;
+}
+
+static float clampf(float v, float lo, float hi, float def) {
+  if (isnan(v)) return def;
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
+static int clampi(int v, int lo, int hi, int def) {
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
+bool config_apply_json(const String &body, String &err) {
+  // Work on a throwaway copy so a bad payload never mutates the live config.
+  Config next = cfg;
+
+  DynamicJsonDocument doc(4096);
+  DeserializationError derr = deserializeJson(doc, body.c_str());
+  if (derr) { err = String("JSON parse error: ") + derr.c_str(); return false; }
+  if (!doc.is<JsonObject>()) { err = "Top-level JSON must be an object"; return false; }
+
+  // Strings: length-capped, unknown keys ignored.
+  if (doc.containsKey("wifi_ssid"))   copy_capped(next.wifi_ssid,   sizeof(next.wifi_ssid),   doc["wifi_ssid"],   "");
+  if (doc.containsKey("wifi_pass"))   copy_capped(next.wifi_pass,   sizeof(next.wifi_pass),   doc["wifi_pass"],   "");
+  if (doc.containsKey("tz"))          copy_capped(next.tz,          sizeof(next.tz),          doc["tz"],          "Europe/Lisbon");
+  if (doc.containsKey("hostname")) {
+    // Reuse the DNS-label sanitizer via portal is awkward here; do a minimal safe
+    // copy and let portal's sanitize_hostname handle the canonical form later.
+    copy_capped(next.hostname, sizeof(next.hostname), doc["hostname"], "minidash");
+  }
+  if (doc.containsKey("esphome_host"))   copy_capped(next.esphome_host, sizeof(next.esphome_host), doc["esphome_host"], "");
+  if (doc.containsKey("esphome_sensors")) copy_capped(next.esphome_sensors, sizeof(next.esphome_sensors), doc["esphome_sensors"], "");
+
+  // Floats: range-clamped.
+  if (doc.containsKey("lat")) next.lat = clampf(doc["lat"] | cfg.lat, -90.0f, 90.0f, cfg.lat);
+  if (doc.containsKey("lon")) next.lon = clampf(doc["lon"] | cfg.lon, -180.0f, 180.0f, cfg.lon);
+
+  // Ints: range-clamped.
+  if (doc.containsKey("weather_interval")) next.weather_interval = clampi(doc["weather_interval"] | cfg.weather_interval, 60, 86400, cfg.weather_interval);
+  if (doc.containsKey("ntp_interval_min"))  next.ntp_interval_min  = clampi(doc["ntp_interval_min"]  | cfg.ntp_interval_min, 1, 1440, cfg.ntp_interval_min);
+  if (doc.containsKey("night_start"))       next.night_start       = clampi(doc["night_start"]       | cfg.night_start, 0, 23, cfg.night_start);
+  if (doc.containsKey("night_end"))         next.night_end         = clampi(doc["night_end"]         | cfg.night_end, 0, 23, cfg.night_end);
+  if (doc.containsKey("flight_range"))      next.flight_range      = clampi(doc["flight_range"]      | cfg.flight_range, 0, 250, cfg.flight_range);
+
+  // Bools.
+  if (doc.containsKey("show_metrics"))         next.show_metrics         = doc["show_metrics"] | cfg.show_metrics;
+  if (doc.containsKey("backlight_control"))    next.backlight_control    = doc["backlight_control"] | cfg.backlight_control;
+  if (doc.containsKey("backlight_active_high")) next.backlight_active_high = doc["backlight_active_high"] | cfg.backlight_active_high;
+
+  // Screens array: bounded to SCREEN_MAX, defaults true if missing.
+  if (doc.containsKey("screens")) {
+    JsonArray scr = doc["screens"];
+    if (!scr.isNull()) {
+      for (int i = 0; i < SCREEN_MAX; i++) next.screen_enabled[i] = true;
+      int si = 0;
+      for (JsonVariant v : scr) { if (si >= SCREEN_MAX) break; next.screen_enabled[si++] = v.as<bool>(); }
+    }
+  }
+
+  // Monitors: accept either an array of strings OR a single string (comma/newline
+  // separated). Bounded to MONITOR_MAX, each entry length-capped and non-empty.
+  for (int i = 0; i < MONITOR_MAX; i++) next.monitors[i][0] = 0;
+  int mi = 0;
+  auto add_mon = [&](const char *s) {
+    if (mi >= MONITOR_MAX || !s || !*s) return;
+    String h = s;
+    h.trim();
+    if (h.length() == 0 || h.length() >= MONITOR_LEN) return;  // skip empty / too long
+    strncpy(next.monitors[mi++], h.c_str(), MONITOR_LEN - 1);
+  };
+  if (doc.containsKey("monitors")) {
+    JsonVariant mv = doc["monitors"];
+    if (mv.is<JsonArray>()) { for (JsonVariant v : mv.as<JsonArray>()) add_mon(v.as<const char*>()); }
+    else if (mv.is<const char*>()) {
+      String s = mv.as<const char*>();
+      s.replace("\n", ",");
+      int start = 0;
+      for (int i = 0; i <= (int)s.length(); i++) {
+        if (i == (int)s.length() || s[i] == ',') { String tok = s.substring(start, i); start = i + 1; add_mon(tok.c_str()); }
+      }
+    }
+  }
+
+  // Commit only after everything validated.
+  cfg = next;
+  err = "";
+  return true;
+}

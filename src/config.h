@@ -40,3 +40,13 @@ extern Config cfg;
 void config_load();
 void config_save();
 void config_reset();
+
+// Serialize the current config to a pretty JSON String (for the web editor view).
+String config_to_json();
+
+// Apply a JSON document to cfg with strict validation: unknown keys are ignored,
+// strings are length-capped to their buffers, numbers are range-clamped, and array
+// sizes are bounded. This guarantees a malformed/oversized payload can never corrupt
+// the config struct or overflow buffers. Returns true on success; on failure `err`
+// describes the problem and cfg is left unchanged.
+bool config_apply_json(const String &body, String &err);

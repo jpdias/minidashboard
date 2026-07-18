@@ -5,12 +5,15 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ArduinoJson.h>
+#include <math.h>
 #include <time.h>
 
-// Sun + Moon data from sunrisesunset.io — plain HTTP (no TLS, no API key). This is
-// dramatically faster than the old USNO TLS endpoint and needs no heap for a BearSSL
-// session, so it no longer contends with the flight radar's TLS client.
-static const char*  MOON_HOST = "api.sunrisesunset.io";
+// Sun + Moon data from sunrise-sunset.org v2 — plain HTTP (no TLS, no API key).
+// This endpoint explicitly supports non-TLS requests for ESP8266/Arduino and
+// returns sun + moon in one fast call (ISO 8601 local times). It is much faster
+// than the old USNO TLS endpoint and needs no BearSSL session, so it does not
+// contend with the flight radar's TLS client.
+static const char*  MOON_HOST = "api.sunrise-sunset.org";
 static const uint16_t MOON_PORT = 80;
 
 static MoonInfo gMoon;
@@ -47,55 +50,58 @@ static void fail(const char* why) {
   lastAttempt = millis();
 }
 
-// Convert a sunrisesunset.io 12-hour time ("7:12:01 AM" / "12:10:59 AM") to our
-// 24-hour "HH:MM" string. Missing/garbage input yields an empty string.
-static void to_hhmm(const char* src, char* dst) {
+// Slice "HH:MM" from an ISO 8601 local time ("2026-07-18T06:15:03+01:00").
+// Null/missing input (ArduinoJson yields "") yields an empty string.
+static void to_iso_hhmm(const char* src, char* dst) {
   dst[0] = 0;
-  if (!src || !*src) return;
-  int h = 0, m = 0;
-  char ap[3] = {0};
-  // Parse "H[:MM[:SS]] AM/PM" — sscanf with %d handles 1- or 2-digit hours.
-  if (sscanf(src, "%d:%d:%*d %2s", &h, &m, ap) < 2 &&
-      sscanf(src, "%d:%d %2s", &h, &m, ap) < 2) return;
-  bool pm = (ap[0] == 'P' || ap[0] == 'p');
-  if (pm && h != 12) h += 12;
-  if (!pm && h == 12) h = 0;          // 12 AM -> 00
-  if (h < 0 || h > 23 || m < 0 || m > 59) return;
-  snprintf(dst, 6, "%02d:%02d", h, m);
+  if (!src || strlen(src) < 16) return;   // need through "...THH:MM"
+  snprintf(dst, 6, "%.2s:%.2s", src + 11, src + 14);
 }
 
-// Build the request URL for the local date. sunrisesunset.io returns times already
-// in the location's local timezone, so no tz parameter is needed.
+// Build the request URL for the local date. The v2 endpoint returns times in the
+// location's own local timezone, so no tz parameter is needed.
 static String build_url(int yr, int mon, int day) {
   char date[12];
   snprintf(date, sizeof(date), "%04d-%02d-%02d", yr, mon, day);
-  return String("/json?lat=") + String(cfg.lat, 4) +
+  return String("/v2?lat=") + String(cfg.lat, 4) +
          "&lng=" + String(cfg.lon, 4) +
          "&date=" + date;
+}
+
+// Map a v2 moon_phase name to a rough 0..1 fraction for the glyph (no numeric
+// phase is provided by this API, unlike the .io one).
+static float phase_fraction(const char* name, int illum) {
+  if (!name) name = "";
+  if (strstr(name, "New")) return 0.0f;
+  if (strstr(name, "First Quarter")) return 0.25f;
+  if (strstr(name, "Full")) return 0.5f;
+  if (strstr(name, "Last Quarter")) return 0.75f;
+  // Fall back to illumination: illum -> distance from new, waning on second half.
+  float f = constrain(illum, 0, 100) / 100.0f;
+  bool waning = strstr(name, "Waning") || strstr(name, "Last");
+  float p = acosf(constrain(1.0f - 2.0f * f, -1.0f, 1.0f)) / (2.0f * (float)M_PI);
+  return waning ? (1.0f - p) : p;
 }
 
 bool parse_moon_body(const String &body, MoonInfo &out) {
   int brace = body.indexOf('{');
   if (brace < 0) { mlog.println("[MOON] no JSON"); return false; }
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(2048);
   DeserializationError err = deserializeJson(doc, body.c_str() + brace);
   if (err) { mlog.printf("[MOON] parse err: %s\n", err.c_str()); return false; }
 
-  JsonObject r = doc["results"];
-  if (r.isNull()) { mlog.println("[MOON] no results"); return false; }
-
+  // v2 returns top-level fields. moonrise/moonset are null when they don't occur.
   out.sunrise[0] = out.sunset[0] = out.moonrise[0] = out.moonset[0] = 0;
-  to_hhmm(r["sunrise"] | "", out.sunrise);
-  to_hhmm(r["sunset"]  | "", out.sunset);
-  to_hhmm(r["moonrise"] | "", out.moonrise);
-  to_hhmm(r["moonset"]  | "", out.moonset);
+  to_iso_hhmm(doc["sunrise"] | "", out.sunrise);
+  to_iso_hhmm(doc["sunset"]  | "", out.sunset);
+  to_iso_hhmm(doc["moonrise"] | "", out.moonrise);
+  to_iso_hhmm(doc["moonset"]  | "", out.moonset);   // null -> empty
 
-  out.illum = (int)roundf(r["moon_illumination"] | 0.0f);
-  const char* cp = r["moon_phase"] | "";
+  out.illum = (int)roundf(doc["moon_illumination"] | 0.0f);
+  const char* cp = doc["moon_phase"] | "";
   strncpy(out.name, cp, sizeof(out.name) - 1);
   out.name[sizeof(out.name) - 1] = 0;
-  // moon_phase_value is a ready-made 0..1 fraction for the glyph; fall back to 0.5.
-  out.phase = r["moon_phase_value"] | 0.5f;
+  out.phase = phase_fraction(cp, out.illum);
 
   out.valid = true;
   mlog.printf("[MOON] OK sun %s/%s moon %s/%s illum %d%% %s\n",

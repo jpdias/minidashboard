@@ -11,7 +11,6 @@ static unsigned long lastProbe = 0;
 // loop is never stalled for long (WiFiClient::connect is synchronous on ESP8266).
 static WiFiClient pbClient;
 static int pbHost = -1;
-static uint16_t pbPort = 80;
 
 void monitors_begin() {
   unsigned long now = millis();

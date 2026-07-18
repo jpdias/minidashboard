@@ -2,8 +2,8 @@
 #include <Arduino.h>
 
 // Sun + Moon rise/set, moon phase and illumination for the current local day,
-// fetched once per day from sunrisesunset.io over plain HTTP (no TLS, no API key).
-// The API returns a ready-made moon_phase_value (0..1) used for the glyph.
+// fetched once per day from sunrise-sunset.org v2 over plain HTTP (no TLS, no API
+// key). Returns ISO 8601 local times; the glyph phase is derived from the name.
 struct MoonInfo {
   char  sunrise[6] = {0};    // "HH:MM" local, empty if none
   char  sunset[6] = {0};

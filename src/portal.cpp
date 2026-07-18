@@ -146,8 +146,8 @@ static void handle_save() {
     m.replace(" ", "");
     for (int i = 0; i < MONITOR_MAX; i++) cfg.monitors[i][0] = 0;
     int idx = 0, start = 0;
-    for (int i = 0; i <= m.length() && idx < MONITOR_MAX; i++) {
-      if (i == m.length() || m.charAt(i) == ',') {
+    for (unsigned int i = 0; i <= (unsigned int)m.length() && idx < MONITOR_MAX; i++) {
+      if (i == (unsigned int)m.length() || m.charAt(i) == ',') {
         String host = m.substring(start, i);
         start = i + 1;
         if (host.length() > 0 && host.length() < MONITOR_LEN) {
@@ -243,8 +243,8 @@ void portal_begin() {
   m.replace(" ", "");
   for (int i = 0; i < MONITOR_MAX; i++) cfg.monitors[i][0] = 0;
   int idx = 0, start = 0;
-  for (int i = 0; i <= m.length() && idx < MONITOR_MAX; i++) {
-    if (i == m.length() || m.charAt(i) == ',') {
+  for (unsigned int i = 0; i <= (unsigned int)m.length() && idx < MONITOR_MAX; i++) {
+    if (i == (unsigned int)m.length() || m.charAt(i) == ',') {
       String host = m.substring(start, i);
       start = i + 1;
       if (host.length() > 0 && host.length() < MONITOR_LEN) {

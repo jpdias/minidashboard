@@ -203,12 +203,14 @@ has an upload form. Both **firmware** (`firmware.bin`) and **filesystem**
 - ESPHome: REST API at `http://<host>/sensor/<slug>` (enable `api: rest: true` in the ESPHome device YAML)
 - Monitors: HTTP reachability probes
 - Flights: adsb.fi open data API over TLS (`opendata.adsb.fi`), ~15s refresh
-- Sun/moon: [sunrisesunset.io](https://sunrisesunset.io) over **plain HTTP**
-  (`api.sunrisesunset.io`, no API key, no TLS). Returns sunrise/set, moonrise/set,
-  moon phase name + illumination, and a ready-made `moon_phase_value` (0..1) for the
-  glyph. Fetched **synchronously at boot** and then once per local day via the
-  non-blocking FSM. Plain HTTP makes it near-instant and means it no longer needs a
-  BearSSL/TLS session (so it doesn't contend with the flight radar's TLS client).
+- Sun/moon: [sunrise-sunset.org v2](https://sunrise-sunset.org/api) over **plain
+  HTTP** (`api.sunrise-sunset.org`, no API key, no TLS — the endpoint explicitly
+  supports non-TLS for ESP8266). Returns sunrise/set, moonrise/set, moon phase name
+  + illumination in one call. Fetched **synchronously at boot** and then once per
+  local day via the non-blocking FSM. Plain HTTP makes it near-instant and means it
+  no longer needs a BearSSL/TLS session (so it doesn't contend with the flight
+  radar's TLS client). The API requests attribution — show a link to
+  sunrise-sunset.org where the data is displayed.
 - Forecast: Open-Meteo, fetched at boot and then **twice a day** (midnight + noon, local).
 
 ## Notes
@@ -283,13 +285,12 @@ reboot. **Fix:** the save response sends `Connection: close`, flushes and stops 
 socket, then `ESP.restart()` after 200ms; `saved.html` shows a 10s JS countdown that
 redirects back to `/`.
 
-### Moon (sunrisesunset.io) was slow over TLS / USNO
-The original sun/moon source was the USNO API over **BearSSL/TLS** — the ESP8266
-spent seconds on the handshake and the TLS buffers ate ~22KB of the 80KB heap, which
-also collided with the flight radar's TLS client (the "moon sometimes doesn't load"
-race). **Fix:** switched to `sunrisesunset.io` over **plain HTTP** (port 80, no key,
-no TLS). It returns sun + moon in one fast request and needs no BearSSL session, so
-the TLS lock is now flight-only and the boot "Sun / Moon" step is near-instant.
+### Moon source: avoid HTTPS-only APIs
+The first plain-HTTP candidate (`sunrisesunset.io`) actually 301-redirects HTTP to
+HTTPS, so the ESP8266 `WiFiClient` (no redirect following) got the HTML redirect
+body and failed to parse. **Fix:** use `sunrise-sunset.org/v2`, whose docs explicitly
+support non-TLS requests for ESP8266 and returns the full sun+moon JSON over plain
+HTTP. (The original USNO source was BearSSL/TLS and slow — same reason to avoid it.)
 
 ### Moon fetched with the wrong (epoch) date at boot
 Before NTP sync, `time()` returns 1970, so the fetch used the wrong date.

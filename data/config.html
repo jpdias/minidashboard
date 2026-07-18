@@ -34,11 +34,12 @@
 <input id="ni" name="ni" value="{{NI}}">
 <label for="eh">ESPHome host (e.g. ikea-hack.lan)</label>
 <input id="eh" name="eh" value="{{EH}}">
-<label for="ehs">ESPHome sensors (slug=label, comma sep)</label>
-<input id="ehs" name="ehs" value="{{EHS}}">
+<label for="ehs">ESPHome sensors (slug=label per line)</label>
+<div id="ehsRows" class="rows"></div>
+<button type="button" onclick="addRow('ehsRows','ehs')">+ Add sensor</button>
 <label for="mon">Monitors (one host per line)</label>
-<textarea id="mon" name="mon" rows="4">{{MON}}</textarea>
-<button type="button" onclick="addMonitor()">+ Add host</button>
+<div id="monRows" class="rows"></div>
+<button type="button" onclick="addRow('monRows','mon')">+ Add host</button>
 <label for="fr">Flight radar range (nm, 0=off)</label>
 <input id="fr" name="fr" value="{{FR}}">
 <label>Enabled screens</label>
@@ -86,11 +87,27 @@
 </div>
 </div>
 <script>
-function addMonitor(){
-  var ta=document.getElementById('mon');
-  if(ta.value.length && ta.value[ta.value.length-1]!=='\n') ta.value+='\n';
-  ta.value+='\n';
-  ta.focus();
+// Build a list of input rows from a newline-separated seed string. Each row is a
+// text input sharing the same name (server collects all of them). The last row
+// gets an "x" remove button.
+function buildRows(containerId, name, seed){
+  var box=document.getElementById(containerId);
+  box.innerHTML='';
+  var items=seed.split('\n').map(function(s){return s.trim();}).filter(function(s){return s.length;});
+  if(items.length===0) items.push('');
+  items.forEach(function(v){ addRow(containerId, name, v); });
+}
+function addRow(containerId, name, val){
+  var box=document.getElementById(containerId);
+  var row=document.createElement('div');
+  row.className='row';
+  var inp=document.createElement('input');
+  inp.type='text'; inp.name=name; inp.value=(val!==undefined?val:'');
+  var del=document.createElement('button');
+  del.type='button'; del.className='del'; del.textContent='x';
+  del.onclick=function(){ row.remove(); };
+  row.appendChild(inp); row.appendChild(del);
+  box.appendChild(row);
 }
 setInterval(function(){
   fetch('/logtext').then(function(r){return r.text();}).then(function(t){
@@ -99,8 +116,11 @@ setInterval(function(){
     el.scrollTop=el.scrollHeight;
   });
 },2000);
+buildRows('ehsRows','ehs',"{{EHS}}".replace(/,/g,'\n'));
+buildRows('monRows','mon',"{{MON}}".replace(/,/g,'\n'));
 // Submit the raw JSON editor via fetch so validation errors are shown inline
-// instead of dropping into the reboot page.
+// instead of dropping into the reboot page. On success the device reboots, so we
+// redirect back to the config page after a short pause (mirrors the form's save).
 document.querySelector('form[action="/config.json"]').addEventListener('submit',function(e){
   e.preventDefault();
   var ta=document.getElementById('cfgjson');
@@ -110,7 +130,11 @@ document.querySelector('form[action="/config.json"]').addEventListener('submit',
   fetch('/config.json',{method:'POST',headers:{'Content-Type':'text/plain'},body:ta.value})
     .then(function(r){ return r.text().then(function(t){ return {ok:r.ok, t:t}; }); })
     .then(function(res){
-      if(res.ok){ msg.textContent='saved - rebooting'; msg.style.color='#0a0'; }
+      if(res.ok){
+        msg.textContent='saved - rebooting, returning to config...';
+        msg.style.color='#0a0';
+        setTimeout(function(){ location.href='/'; }, 2500);
+      }
       else { msg.textContent=res.t; msg.style.color='#c33'; }
     })
     .catch(function(err){ msg.textContent='network error: '+err; msg.style.color='#c33'; });

@@ -35,6 +35,9 @@ static String loadTemplate(const char *path) {
   return s;
 }
 
+// Send the "saved, rebooting" page inline (no LittleFS dependency) and reboot.
+static void send_reboot_page();
+
 static String monitors_to_csv() {
   String m;
   for (int i = 0; i < MONITOR_MAX; i++) {
@@ -129,13 +132,30 @@ static void handle_config_edit() {
   }
   config_save();
   mlog.println("[CFG] applied edited config.json");
-  String html = loadTemplate("/saved.html");
-  if (html.length() == 0) html = "<html><body><h3>Saved. Rebooting...</h3></body></html>";
+  send_reboot_page();
+}
+
+// Send the "saved, rebooting" page inline (no LittleFS dependency) and reboot.
+// Inlined so a failed template read during the pre-reboot window can never leave
+// the browser tab hanging on a half-open connection.
+static void send_reboot_page() {
+  const char* page =
+    "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">"
+    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+    "<title>Saved</title><link rel=\"stylesheet\" href=\"/style.css\"></head><body>"
+    "<h1>miniDash</h1>"
+    "<div class=\"msg\"><strong>Saved.</strong><br>Rebooting... returning to config in "
+    "<span id=\"c\">10</span>s.</div>"
+    "<script>var n=10;var el=document.getElementById('c');"
+    "var t=setInterval(function(){n--;if(el)el.textContent=n;"
+    "if(n<=0){clearInterval(t);location.href='/';}},1000);</script>"
+    "</body></html>";
   server.sendHeader("Connection", "close");
-  server.send(200, "text/html", html);
+  server.send(200, "text/html", page);
   server.client().flush();
   server.client().stop();
-  delay(200);
+  yield();
+  delay(600);
   ESP.restart();
 }
 
@@ -161,7 +181,20 @@ static void handle_save() {
   if (server.hasArg("ns")) cfg.night_start = constrain(server.arg("ns").toInt(), 0, 23);
   if (server.hasArg("ne")) cfg.night_end = constrain(server.arg("ne").toInt(), 0, 23);
   if (server.hasArg("eh")) strncpy(cfg.esphome_host, server.arg("eh").c_str(), sizeof(cfg.esphome_host) - 1);
-  if (server.hasArg("ehs")) strncpy(cfg.esphome_sensors, server.arg("ehs").c_str(), sizeof(cfg.esphome_sensors) - 1);
+  if (server.hasArg("ehs")) {
+    // Multiple inputs may share name="ehs" (one per row). Join them.
+    String joined;
+    for (int a = 0; a < server.args(); a++) {
+      if (server.argName(a) == "ehs") {
+        String v = server.arg(a);
+        v.replace("\n", ","); v.replace("\r", "");
+        if (v.length()) { joined += v; joined += ","; }
+      }
+    }
+    if (joined.length() > 0) joined.remove(joined.length() - 1);
+    strncpy(cfg.esphome_sensors, joined.c_str(), sizeof(cfg.esphome_sensors) - 1);
+    cfg.esphome_sensors[sizeof(cfg.esphome_sensors) - 1] = 0;
+  }
   if (server.hasArg("fr")) cfg.flight_range = constrain(server.arg("fr").toInt(), 0, 250);
   cfg.backlight_control = server.hasArg("blc");
   cfg.backlight_active_high = server.hasArg("blh");
@@ -170,10 +203,13 @@ static void handle_save() {
       cfg.screen_enabled[i] = server.hasArg("sc" + String(i));
   }
   if (server.hasArg("mon")) {
-    String m = server.arg("mon");
+    // Multiple inputs may share name="mon" (one host per row). Collect them all.
+    String m;
+    for (int a = 0; a < server.args(); a++) {
+      if (server.argName(a) == "mon") { String v = server.arg(a); v.replace("\n", ","); v.replace("\r", ""); m += v; m += ","; }
+    }
     m.replace(" ", "");
-    m.replace("\n", ",");
-    m.replace("\r", "");
+    if (m.length() > 0) m.remove(m.length() - 1);
     for (int i = 0; i < MONITOR_MAX; i++) cfg.monitors[i][0] = 0;
     int idx = 0, start = 0;
     for (unsigned int i = 0; i <= (unsigned int)m.length() && idx < MONITOR_MAX; i++) {
@@ -188,16 +224,7 @@ static void handle_save() {
     }
   }
   config_save();
-  String html = loadTemplate("/saved.html");
-  if (html.length() == 0) html = "<html><body><h3>Saved. Rebooting...</h3></body></html>";
-  // Tell the browser the response is complete and the socket will close, so the
-  // tab doesn't hang waiting for more bytes while the device reboots.
-  server.sendHeader("Connection", "close");
-  server.send(200, "text/html", html);
-  server.client().flush();
-  server.client().stop();
-  delay(200);
-  ESP.restart();
+  send_reboot_page();
 }
 
 // Sanitize a user hostname to a valid DNS label: lowercase alphanumerics and

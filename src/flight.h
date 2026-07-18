@@ -25,3 +25,8 @@ void flight_tick();
 bool flight_updated();        // true once after a refresh
 const FlightData& flight_data();
 int flight_next_refresh_secs();   // seconds until next fetch (0 = fetching now)
+
+// Synchronous first fetch used at boot (the only TLS user besides moon, and moon
+// has already released the lock by then). Blocks up to timeoutMs. Skipped if the
+// range is 0 (radar disabled).
+bool flight_fetch_blocking(unsigned long timeoutMs = 12000);

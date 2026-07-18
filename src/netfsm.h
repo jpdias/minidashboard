@@ -12,3 +12,4 @@ bool netfsm_first_done();       // true after the first full boot cycle complete
 Weather& net_weather();
 Forecast& net_forecast();
 String net_extip();
+void netfsm_mark_forecast_fresh();   // mark current half-day fetched (after boot)

@@ -20,5 +20,12 @@ void moon_tick();                  // non-blocking; fetches once per local day
 bool moon_updated();               // true once after a successful fetch
 const MoonInfo& moon_data();
 
+// Synchronous, deterministic fetch used at boot (and anything that can afford to
+// block). Blocks until the response is read and parsed or it times out. Returns
+// true on success. This is the reliable path — no FSM interleaving, no contention
+// with the flight fetcher. Sets gFetchedYday on success so moon_tick() won't
+// re-fetch the same local day.
+bool moon_fetch_blocking(unsigned long timeoutMs = 12000);
+
 // Parse a USNO rstt/oneday GeoJSON body into out. Returns true on success.
 bool parse_moon_body(const String &body, MoonInfo &out);

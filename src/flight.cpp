@@ -230,3 +230,60 @@ void flight_tick() {
       break;
   }
 }
+
+// Synchronous first fetch used at boot. Blocks until the full response is parsed
+// or timeoutMs elapses. At boot the moon fetch has already released the TLS lock,
+// so this is the only TLS session and is guaranteed to succeed if the network is up.
+bool flight_fetch_blocking(unsigned long timeoutMs) {
+  if (cfg.flight_range <= 0) return false;
+  if (WiFi.status() != WL_CONNECTED) { mlog.println("[FLT] block: no wifi"); return false; }
+  if (!tls_try_acquire()) { mlog.println("[FLT] block: tls busy"); return false; }
+
+  BearSSL::WiFiClientSecure *c = new BearSSL::WiFiClientSecure();
+  if (!c) { tls_release(); mlog.println("[FLT] block: alloc fail"); return false; }
+  c->setInsecure();
+  c->setBufferSizes(4096, 512);
+  c->setTimeout(3000);
+
+  String url = String("/api/v2/lat/") + String(cfg.lat, 4) +
+               "/lon/" + String(cfg.lon, 4) +
+               "/dist/" + String(cfg.flight_range);
+  bool ok = false;
+  if (c->connect(FL_HOST, FL_PORT)) {
+    c->print(String("GET ") + url + " HTTP/1.1\r\n" +
+             "Host: " + FL_HOST + "\r\n" +
+             "User-Agent: miniDash\r\n" +
+             "Connection: close\r\n\r\n");
+    // Wait for the body, then parse straight from the stream.
+    unsigned long t0 = millis();
+    while (millis() - t0 < timeoutMs) {
+      ESP.wdtFeed();
+      if (c->available()) break;
+      if (!c->connected()) { c->stop(); delete c; tls_release(); return false; }
+    }
+    // Skip headers up to the blank line.
+    uint8_t m = 0;
+    while (millis() - t0 < timeoutMs) {
+      ESP.wdtFeed();
+      while (c->available()) {
+        char ch = c->read();
+        if ((m == 0 || m == 2) && ch == '\r') m++;
+        else if ((m == 1 || m == 3) && ch == '\n') { m++; if (m == 4) goto body; }
+        else m = 0;
+      }
+      if (!c->connected() && !c->available()) break;
+    }
+body:
+    if (m == 4) {
+      parse(*c);   // streams from the client, stops at closing brace
+      ok = gData.valid;
+    }
+    lastCycle = millis();
+    first = false;
+  } else {
+    mlog.println("[FLT] block: connect failed");
+  }
+  c->stop(); delete c;
+  tls_release();
+  return ok;
+}

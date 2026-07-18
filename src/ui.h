@@ -10,6 +10,12 @@ bool ui_is_on();
 void ui_screen_loading(unsigned long waitedMs, unsigned long timeoutMs);
 void ui_loading_update(unsigned long waitedMs, unsigned long timeoutMs);
 
+// Boot "operation log" screen: a fixed list of steps shown while we deterministically
+// fetch the once-per-day data (weather, forecast, moon, ...) before the loop starts.
+enum BootStep { BOOT_WAIT, BOOT_DONE, BOOT_FAIL };
+void ui_screen_boot(const char *title);
+void ui_boot_step(int idx, const char *label, BootStep st);
+
 void ui_draw_icon(int code, int cx, int cy, uint16_t color);
 void ui_screen_tag(int idx, int total);
 void ui_draw_wifi_bars(int x, int y);      // cellular-style signal bars

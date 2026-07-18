@@ -213,3 +213,69 @@ void moon_tick() {
     }
   }
 }
+
+// Synchronous, deterministic fetch used at boot (and any caller that can block).
+// Blocks until the full response is read and parsed, or until timeoutMs elapses.
+// No FSM interleaving, no contention with the flight fetcher (it isn't running yet
+// at boot), so this is the reliable path that avoids the "moon sometimes doesn't
+// load" race. On success sets gFetchedYday so moon_tick() won't re-fetch today.
+bool moon_fetch_blocking(unsigned long timeoutMs) {
+  if (WiFi.status() != WL_CONNECTED) { mlog.println("[MOON] block: no wifi"); return false; }
+  if (!time_is_synced()) { mlog.println("[MOON] block: clock not synced"); return false; }
+  if (!tls_try_acquire()) { mlog.println("[MOON] block: tls busy"); return false; }
+
+  BearSSL::WiFiClientSecure *c = new BearSSL::WiFiClientSecure();
+  if (!c) { tls_release(); mlog.println("[MOON] block: alloc fail"); return false; }
+  c->setInsecure();
+  c->setBufferSizes(4096, 512);
+  c->setTimeout(3000);
+
+  int h, m, s, dow, day, mon, yr;
+  time_now(h, m, s, dow, day, mon, yr);
+  long off = time_tz_offset();
+  char tzbuf[12];
+  snprintf(tzbuf, sizeof(tzbuf), "%.2f", off / 3600.0);
+  String url = String("/api/rstt/oneday?date=") + yr + "-" + mon + "-" + day +
+               "&coords=" + String(cfg.lat, 4) + "," + String(cfg.lon, 4) +
+               "&tz=" + tzbuf;
+  String host = MOON_HOST;
+
+  bool ok = false;
+  if (c->connect(host.c_str(), MOON_PORT)) {
+    c->print(String("GET ") + url + " HTTP/1.1\r\n" +
+             "Host: " + host + "\r\n" +
+             "User-Agent: miniDash\r\n" +
+             "Connection: close\r\n\r\n");
+    String body; bool inBody = false; String hdr;
+    unsigned long t0 = millis();
+    while (millis() - t0 < timeoutMs) {
+      ESP.wdtFeed();
+      while (c->available()) {
+        char ch = c->read();
+        if (!inBody) {
+          hdr += ch;
+          if (ch == '\n' && (hdr == "\r\n" || hdr == "\n")) inBody = true;
+          hdr = (ch == '\n') ? "" : hdr;
+        } else {
+          body += ch;
+        }
+      }
+      if (inBody && !c->connected() && !c->available()) break;
+      if (body.length() > 6000) break;
+    }
+    mlog.printf("[MOON] block body len=%d\n", body.length());
+    if (parse_moon_body(body, gMoon)) {
+      time_t now = time(nullptr);
+      gFetchedYday = localtime(&now)->tm_yday;
+      gUpdated = true;
+      ok = true;
+    } else {
+      lastAttempt = millis();
+    }
+  } else {
+    mlog.println("[MOON] block: connect failed");
+  }
+  c->stop(); delete c;
+  tls_release();
+  return ok;
+}

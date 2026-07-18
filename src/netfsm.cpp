@@ -19,9 +19,30 @@ static unsigned long netLastCycle = 0;
 static bool netFirst = true;
 static bool netActive = false;
 
+// Forecast is "slow" data: fetch it at boot and twice a day (midnight + noon,
+// local). Track which half-day we last fetched so we don't hammer the API on
+// every weather refresh.
+static int gForecastHalfDay = -1;
+
+static int current_halfday() {
+  // 0 = 00:00-11:59, 1 = 12:00-23:59, by local clock.
+  int h = 0, m = 0, s = 0, dow = 0, day = 0, mon = 0, yr = 0;
+  if (time_is_synced()) time_now(h, m, s, dow, day, mon, yr);
+  return (h < 12) ? 0 : 1;
+}
+
+static bool forecast_stale() {
+  if (!time_is_synced()) return false;     // can't decide without a clock
+  return (gForecastHalfDay != current_halfday()) || !gForecast.valid;
+}
+
 Weather& net_weather() { return gWeather; }
 Forecast& net_forecast() { return gForecast; }
 String net_extip() { return gExtIp; }
+
+void netfsm_mark_forecast_fresh() {
+  if (time_is_synced()) gForecastHalfDay = current_halfday();
+}
 
 bool netfsm_updated() {
   if (gUpdated) { gUpdated = false; return true; }
@@ -35,6 +56,7 @@ void netfsm_begin(unsigned long intervalMs) {
   netLastCycle = 0;
   netFirst = true;
   netActive = false;
+  gForecastHalfDay = -1;   // boot's blocking fetch will set gForecast.valid
   http.consume();
 }
 
@@ -75,8 +97,14 @@ static void finish_task(NetTask t, const String &raw) {
 }
 
 static void next_task() {
-  if (netTask == TASK_WEATHER) { netTask = TASK_FORECAST; start_task(netTask); }
-  else if (netTask == TASK_FORECAST) { netTask = TASK_EXTIP; start_task(netTask); }
+  if (netTask == TASK_WEATHER) {
+    if (forecast_stale()) { netTask = TASK_FORECAST; start_task(netTask); }
+    else { netTask = TASK_EXTIP; start_task(netTask); }
+  }
+  else if (netTask == TASK_FORECAST) {
+    gForecastHalfDay = current_halfday();
+    netTask = TASK_EXTIP; start_task(netTask);
+  }
   else {
     netLastCycle = millis();
     gUpdated = true;

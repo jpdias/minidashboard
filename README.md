@@ -204,7 +204,12 @@ has an upload form. Both **firmware** (`firmware.bin`) and **filesystem**
 - Monitors: HTTP reachability probes
 - Flights: adsb.fi open data API over TLS (`opendata.adsb.fi`), ~15s refresh
 - Sun/moon: USNO Astronomical Applications API over TLS (`aa.usno.navy.mil`) —
-  sunrise/set, moonrise/set, moon phase and illumination, fetched once per local day
+  sunrise/set, moonrise/set, moon phase and illumination. Fetched **synchronously at
+  boot** (the first TLS session, running alone) and then once more per local day via
+  the non-blocking FSM. Because the boot fetch blocks and runs before the flight
+  radar's TLS session, the two never collide — this fixed the intermittent
+  "moon sometimes doesn't load" race.
+- Forecast: Open-Meteo, fetched at boot and then **twice a day** (midnight + noon, local).
 
 ## Notes
 - All network I/O is non-blocking (a shared HTTP state machine) so the clock keeps ticking.
@@ -212,6 +217,21 @@ has an upload form. Both **firmware** (`firmware.bin`) and **filesystem**
 - WiFi is auto-supervised and reconnects; an "offline" marker shows when down.
 - Free heap and fragmentation are shown on the System screen and logged periodically.
 - Live serial log is viewable at `/log` (and on the config page) on the device web UI.
+
+### Boot sequence (deterministic one-time fetch)
+Instead of racing several non-blocking FSMs at startup, `setup()` runs a fixed,
+**blocking** boot sequence with a live on-screen step list (`miniDash` → `Fetching
+data...` → one line per step, `+`=done / `!`=fail / `.`=working):
+1. **NTP sync** — wait for a real clock (date-based fetches are meaningless at epoch).
+2. **Weather** + **Forecast** + **External IP** — plain HTTP, no TLS contention.
+3. **Sun / Moon** — TLS to USNO; runs *alone* as the first TLS session.
+4. **Flight radar** — TLS to adsb.fi; runs only after moon released the lock.
+5. **Ready** — hand off to the main loop.
+
+Each step either completes or times out (12s) before the next starts, so there's no
+overlap of the two TLS sessions and the radar/moon can never wedge as they used to.
+The forecast is then refreshed only **twice a day** (midnight + noon) instead of on
+every weather cycle.
 
 ## Troubleshooting (problems hit during development)
 

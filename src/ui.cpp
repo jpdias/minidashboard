@@ -118,6 +118,35 @@ void ui_poweroff() {
   tft.fillScreen(ST7735_BLACK);
 }
 
+void ui_screen_boot(const char *title) {
+  tft.fillScreen(ST7735_BLACK);
+  tft.setTextColor(ST7735_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(2, 2);
+  tft.print("miniDash");
+  tft.setTextColor(ST7735_WHITE);
+  tft.setCursor(2, 14);
+  tft.print(title);
+  tft.drawFastHLine(0, 24, 128, ST7735_BLUE);
+  // reserve step lines 0..5 starting at y=32, 14px apart
+}
+
+void ui_boot_step(int idx, const char *label, BootStep st) {
+  int y = 32 + idx * 14;
+  tft.fillRect(2, y, 124, 12, ST7735_BLACK);          // clear the line
+  uint16_t col = ST7735_WHITE;
+  const char *mark = " ";
+  if (st == BOOT_DONE) { col = ST7735_GREEN; mark = "+"; }
+  else if (st == BOOT_FAIL) { col = ST7735_RED; mark = "!"; }
+  else if (st == BOOT_WAIT) { col = ST7735_YELLOW; mark = "."; }
+  tft.setTextColor(col);
+  tft.setTextSize(1);
+  tft.setCursor(4, y + 1);
+  tft.print(mark);
+  tft.setCursor(14, y + 1);
+  tft.print(label);
+}
+
 void ui_poweron() {
   // The panel shares the common GND that the backlight transistor switches, so
   // turning it "off" fully removes power from the ST7735 controller too. On wake

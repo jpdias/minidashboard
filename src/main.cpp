@@ -108,38 +108,65 @@ void setup() {
   time_begin();
   time_update();           // NTP sync + TZ
 
-  netfsm_begin((unsigned long)cfg.weather_interval * 1000UL);
-  esphome_begin();
-  monitors_begin();
-  flight_begin();
-  moon_begin();
+   netfsm_begin((unsigned long)cfg.weather_interval * 1000UL);
+   esphome_begin();
+   monitors_begin();
+   flight_begin();
+   moon_begin();
 
-  // Land on the first enabled screen (fall back to Clock if none enabled).
-  screenIndex = 0;
-  for (int i = 0; i < SCREEN_COUNT; i++) {
-    bool disabled = !cfg.screen_enabled[i] || (i == 5 && cfg.flight_range <= 0);
-    if (!disabled) { screenIndex = i; break; }
-  }
+   // Land on the first enabled screen (fall back to Clock if none enabled).
+   screenIndex = 0;
+   for (int i = 0; i < SCREEN_COUNT; i++) {
+     bool disabled = !cfg.screen_enabled[i] || (i == 5 && cfg.flight_range <= 0);
+     if (!disabled) { screenIndex = i; break; }
+   }
 
-  // --- Boot loader: block on a loading screen until weather (+IP) is fetched ---
-  const unsigned long BOOT_TIMEOUT = 20000;
-  unsigned long bootStart = millis();
-  unsigned long lastLoad = 0;
-  mlog.println("[BOOT] waiting for first data fetch...");
-  ui_screen_loading(0, BOOT_TIMEOUT);   // draw static frame once
-  while (!net_weather().valid && millis() - bootStart < BOOT_TIMEOUT) {
-    ESP.wdtFeed();
-    portal_handle();
-    netfsm_tick();
-    esphome_tick();
-    if (millis() - lastLoad > 500) {
-      lastLoad = millis();
-      ui_loading_update(millis() - bootStart, BOOT_TIMEOUT);
-    }
-  }
-  if (net_weather().valid) mlog.println("[BOOT] weather ready");
-  else mlog.println("[BOOT] timeout, proceeding");
-  delay(400);
+   // --- Deterministic boot sequence ---
+   // All the "once-per-day" data is fetched here, synchronously and in a fixed
+   // order, with every step shown on screen. This removes the non-deterministic
+   // FSM races (moon sometimes not loading, radar freezing) by ensuring each
+   // fetch either completes or times out cleanly before the next begins, and that
+   // the only two TLS sessions (moon, then flight) never overlap.
+   const unsigned long BOOT_TIMEOUT = 30000;
+   unsigned long bootStart = millis();
+
+   ui_screen_boot("Fetching data...");
+   ui_boot_step(0, "NTP sync", BOOT_WAIT);
+   // Wait for a real clock before trusting any date-based fetch.
+   while (!time_is_synced() && millis() - bootStart < 8000) {
+     ESP.wdtFeed(); portal_handle(); time_tick();
+     ui_boot_step(0, "NTP sync", BOOT_WAIT);
+     delay(100);
+   }
+   ui_boot_step(0, "NTP sync", time_is_synced() ? BOOT_DONE : BOOT_FAIL);
+
+   // 1) Weather + forecast + external IP (plain HTTP, no TLS contention).
+   ui_boot_step(1, "Weather", BOOT_WAIT);
+   ui_boot_step(2, "Forecast", BOOT_WAIT);
+   unsigned long netT = millis();
+   while (!netfsm_first_done() && millis() - netT < BOOT_TIMEOUT) {
+     ESP.wdtFeed(); portal_handle(); time_tick(); netfsm_tick();
+     delay(50);
+   }
+   ui_boot_step(1, "Weather",  net_weather().valid ? BOOT_DONE : BOOT_FAIL);
+   ui_boot_step(2, "Forecast", net_forecast().valid ? BOOT_DONE : BOOT_FAIL);
+   netfsm_mark_forecast_fresh();   // boot already fetched forecast; don't refetch now
+
+   // 2) Moon (TLS) — first TLS use, so it runs alone. Deterministic + blocking.
+   ui_boot_step(3, "Sun / Moon", BOOT_WAIT);
+   bool moonOk = moon_fetch_blocking(12000);
+   ui_boot_step(3, "Sun / Moon", moonOk ? BOOT_DONE : BOOT_FAIL);
+
+   // 3) Flight radar first fetch (TLS) — moon has released the lock by now.
+   if (cfg.flight_range > 0) {
+     ui_boot_step(4, "Flight radar", BOOT_WAIT);
+     bool flOk = flight_fetch_blocking(12000);
+     ui_boot_step(4, "Flight radar", flOk ? BOOT_DONE : BOOT_FAIL);
+   }
+
+   ui_boot_step(5, "Ready", BOOT_DONE);
+   mlog.println("[BOOT] sequence complete");
+   delay(600);
 }
 
 void draw_screen(int h, int m, int s, int dow, int day, int mon, int yr) {

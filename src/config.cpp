@@ -144,7 +144,7 @@ void config_save() {
   if (doc.overflowed()) mlog.println("[CFG] WARN: JSON doc overflowed, data may be truncated");
   File f = LittleFS.open(CONFIG_PATH, "w");
   if (!f) { mlog.println("[CFG] save open failed"); return; }
-  size_t n = serializeJson(doc, f);
+  size_t n = serializeJsonPretty(doc, f);
   f.close();
   mlog.printf("[CFG] saved config.json (%u bytes)\n", (unsigned)n);
 }
@@ -208,6 +208,20 @@ static int clampi(int v, int lo, int hi, int def) {
   return v;
 }
 
+// Read a numeric JSON value tolerantly: accepts a real number OR a numeric string
+// (e.g. "23"), since the config form may send either. Falls back to `def`.
+static float jnum(JsonVariant v, float def) {
+  if (v.isNull()) return def;
+  if (v.is<const char*>()) { const char* s = v.as<const char*>(); return (s && *s) ? String(s).toFloat() : def; }
+  return v.as<float>();
+}
+
+static long jint(JsonVariant v, long def) {
+  if (v.isNull()) return def;
+  if (v.is<const char*>()) { const char* s = v.as<const char*>(); return (s && *s) ? String(s).toInt() : def; }
+  return v.as<long>();
+}
+
 bool config_apply_json(const String &body, String &err) {
   // Work on a throwaway copy so a bad payload never mutates the live config.
   Config next = cfg;
@@ -229,19 +243,19 @@ bool config_apply_json(const String &body, String &err) {
   if (doc.containsKey("esphome_host"))   copy_capped(next.esphome_host, sizeof(next.esphome_host), doc["esphome_host"], "");
   if (doc.containsKey("esphome_sensors")) copy_capped(next.esphome_sensors, sizeof(next.esphome_sensors), doc["esphome_sensors"], "");
 
-  // Floats: range-clamped.
-  if (doc.containsKey("lat")) next.lat = clampf(doc["lat"] | cfg.lat, -90.0f, 90.0f, cfg.lat);
-  if (doc.containsKey("lon")) next.lon = clampf(doc["lon"] | cfg.lon, -180.0f, 180.0f, cfg.lon);
+  // Floats: range-clamped. (jnum accepts numbers or numeric strings.)
+  if (doc.containsKey("lat")) next.lat = clampf(jnum(doc["lat"], cfg.lat), -90.0f, 90.0f, cfg.lat);
+  if (doc.containsKey("lon")) next.lon = clampf(jnum(doc["lon"], cfg.lon), -180.0f, 180.0f, cfg.lon);
 
-  // Ints: range-clamped.
-  if (doc.containsKey("weather_interval")) next.weather_interval = clampi(doc["weather_interval"] | cfg.weather_interval, 60, 86400, cfg.weather_interval);
-  if (doc.containsKey("ntp_interval_min"))  next.ntp_interval_min  = clampi(doc["ntp_interval_min"]  | cfg.ntp_interval_min, 1, 1440, cfg.ntp_interval_min);
-  if (doc.containsKey("night_start"))       next.night_start       = clampi(doc["night_start"]       | cfg.night_start, 0, 23, cfg.night_start);
-  if (doc.containsKey("night_end"))         next.night_end         = clampi(doc["night_end"]         | cfg.night_end, 0, 23, cfg.night_end);
-  if (doc.containsKey("flight_range"))      next.flight_range      = clampi(doc["flight_range"]      | cfg.flight_range, 0, 250, cfg.flight_range);
+  // Ints: range-clamped. (jint accepts numbers or numeric strings.)
+  if (doc.containsKey("weather_interval")) next.weather_interval = clampi(jint(doc["weather_interval"], cfg.weather_interval), 60, 86400, cfg.weather_interval);
+  if (doc.containsKey("ntp_interval_min"))  next.ntp_interval_min  = clampi(jint(doc["ntp_interval_min"], cfg.ntp_interval_min), 1, 1440, cfg.ntp_interval_min);
+  if (doc.containsKey("night_start"))       next.night_start       = clampi(jint(doc["night_start"], cfg.night_start), 0, 23, cfg.night_start);
+  if (doc.containsKey("night_end"))         next.night_end         = clampi(jint(doc["night_end"], cfg.night_end), 0, 23, cfg.night_end);
+  if (doc.containsKey("flight_range"))      next.flight_range      = clampi(jint(doc["flight_range"], cfg.flight_range), 0, 250, cfg.flight_range);
 
   // Bools.
-  if (doc.containsKey("show_metrics"))         next.show_metrics         = doc["show_metrics"] | cfg.show_metrics;
+  if (doc.containsKey("show_metrics"))         next.show_metrics         = (jint(doc["show_metrics"], cfg.show_metrics ? 1 : 0) != 0);
   if (doc.containsKey("backlight_control"))    next.backlight_control    = doc["backlight_control"] | cfg.backlight_control;
   if (doc.containsKey("backlight_active_high")) next.backlight_active_high = doc["backlight_active_high"] | cfg.backlight_active_high;
 

@@ -26,34 +26,45 @@ static String htmlEscape(const String &s) {
   return o;
 }
 
-// Load a template file from LittleFS into a String.
-static String loadTemplate(const char *path) {
-  File f = LittleFS.open(path, "r");
-  if (!f) return String();
-  String s = f.readString();
-  f.close();
-  return s;
-}
-
 // Send the "saved, rebooting" page inline (no LittleFS dependency) and reboot.
 static void send_reboot_page();
 
-static String monitors_to_csv() {
-  String m;
-  for (int i = 0; i < MONITOR_MAX; i++) {
-    if (cfg.monitors[i][0]) {
-      m += cfg.monitors[i];
-      m += "\n";
-    }
+// Render a set of input rows (one per non-empty value) as HTML, each sharing the
+// same `name` (server collects them all). Values are HTML-escaped.
+static String render_rows(const char* name, const char* values[], int n) {
+  String h;
+  for (int i = 0; i < n; i++) {
+    if (!values[i] || !values[i][0]) continue;
+    h += "<div class=\"row\"><input type=\"text\" name=\"";
+    h += name;
+    h += "\" value=\"";
+    h += htmlEscape(values[i]);
+    h += "\"><button type=\"button\" class=\"del\" onclick=\"this.parentNode.remove()\">x</button></div>";
   }
-  return m;
+  return h;
 }
 
-static void handle_style() {
-  File f = LittleFS.open("/style.css", "r");
-  if (!f) { server.send(404, "text/plain", "style.css not found"); return; }
-  server.streamFile(f, "text/css");
-  f.close();
+// Monitor rows (one per configured host) as escaped HTML input rows.
+static String monitor_rows() {
+  const char* p[MONITOR_MAX];
+  for (int i = 0; i < MONITOR_MAX; i++) p[i] = cfg.monitors[i];
+  return render_rows("mon", p, MONITOR_MAX);
+}
+
+// ESPHome sensor rows: split the comma-separated string into escaped input rows.
+static String esphome_rows() {
+  String s = cfg.esphome_sensors;
+  const char* parts[16]; int np = 0;
+  int start = 0;
+  for (int i = 0; i <= (int)s.length() && np < 16; i++) {
+    if (i == (int)s.length() || s[i] == ',') {
+      String tok = s.substring(start, i); start = i + 1; tok.trim();
+      if (tok.length()) { char* b = (char*)malloc(tok.length() + 1); if (b) { strcpy(b, tok.c_str()); parts[np++] = b; } }
+    }
+  }
+  String h = render_rows("ehs", parts, np);
+  for (int i = 0; i < np; i++) free((void*)parts[i]);
+  return h;
 }
 
 static String tz_options() {
@@ -71,6 +82,13 @@ static String tz_options() {
   return o;
 }
 
+static void handle_style() {
+  File f = LittleFS.open("/style.css", "r");
+  if (!f) { server.send(404, "text/plain", "style.css not found"); return; }
+  server.streamFile(f, "text/css");
+  f.close();
+}
+
 static String log_text() {
   char* buf = logbuf_copy();
   String body = buf ? String(buf) : String("(empty)");
@@ -78,35 +96,68 @@ static String log_text() {
   return body;
 }
 
-static void handle_root() {
-  String html = loadTemplate("/config.html");
-  if (html.length() == 0) { server.send(500, "text/plain", "config.html missing (run uploadfs)"); return; }
-  // WiFi credentials set via the WiFiManager AP portal live in the ESP's own
-  // flash, not in cfg. Fall back to the actively-connected SSID.
-  String ssid = strlen(cfg.wifi_ssid) ? String(cfg.wifi_ssid) : WiFi.SSID();
-  html.replace("{{SSID}}", htmlEscape(ssid));
-  html.replace("{{HN}}", htmlEscape(cfg.hostname));
-  html.replace("{{LAT}}", String(cfg.lat, 4));
-  html.replace("{{LON}}", String(cfg.lon, 4));
-  html.replace("{{TZ_OPTIONS}}", tz_options());
-  html.replace("{{WI}}", String(cfg.weather_interval));
-  html.replace("{{ME}}", String(cfg.show_metrics ? 1 : 0));
-  html.replace("{{NI}}", String(cfg.ntp_interval_min));
-  html.replace("{{NS}}", String(cfg.night_start));
-  html.replace("{{NE}}", String(cfg.night_end));
-  html.replace("{{EH}}", htmlEscape(cfg.esphome_host));
-  html.replace("{{EHS}}", htmlEscape(cfg.esphome_sensors));
-  html.replace("{{MON}}", htmlEscape(monitors_to_csv()));
-  html.replace("{{FR}}", String(cfg.flight_range));
-  html.replace("{{BLC}}", cfg.backlight_control ? "checked" : "");
-  html.replace("{{BLH}}", cfg.backlight_active_high ? "checked" : "");
-  for (int i = 0; i < SCREEN_MAX; i++) {
-    html.replace("{{SC" + String(i) + "}}", cfg.screen_enabled[i] ? "checked" : "");
+// Resolve a template token (name without the surrounding braces) to its HTML.
+// Returns the literal "{{TOKEN}}" unchanged if the token is unknown, so typos in
+// the template are visible rather than silently dropped.
+static String resolve_token(const String& tok) {
+  if (tok == "SSID") {
+    String ssid = strlen(cfg.wifi_ssid) ? String(cfg.wifi_ssid) : WiFi.SSID();
+    return htmlEscape(ssid);
   }
-  html.replace("{{IP}}", WiFi.localIP().toString());
-  html.replace("{{LOG}}", htmlEscape(log_text()));
-  html.replace("{{CFGJSON}}", htmlEscape(config_to_json()));
-  server.send(200, "text/html", html);
+  if (tok == "HN")         return htmlEscape(cfg.hostname);
+  if (tok == "LAT")        return String(cfg.lat, 4);
+  if (tok == "LON")        return String(cfg.lon, 4);
+  if (tok == "TZ_OPTIONS") return tz_options();
+  if (tok == "WI")         return String(cfg.weather_interval);
+  if (tok == "ME")         return String(cfg.show_metrics ? 1 : 0);
+  if (tok == "NI")         return String(cfg.ntp_interval_min);
+  if (tok == "NS")         return String(cfg.night_start);
+  if (tok == "NE")         return String(cfg.night_end);
+  if (tok == "EH")         return htmlEscape(cfg.esphome_host);
+  if (tok == "MON_ROWS")   return monitor_rows();
+  if (tok == "EHS_ROWS")   return esphome_rows();
+  if (tok == "FR")         return String(cfg.flight_range);
+  if (tok == "BLC")        return cfg.backlight_control ? "checked" : "";
+  if (tok == "BLH")        return cfg.backlight_active_high ? "checked" : "";
+  if (tok == "IP")         return WiFi.localIP().toString();
+  if (tok == "LOG")        return htmlEscape(log_text());
+  if (tok == "CFGJSON")    return htmlEscape(config_to_json());
+  if (tok.startsWith("SC")) {
+    int i = tok.substring(2).toInt();
+    if (i >= 0 && i < SCREEN_MAX) return cfg.screen_enabled[i] ? "checked" : "";
+  }
+  return "{{" + tok + "}}";
+}
+
+// Serve the config page by streaming the template line-by-line and substituting
+// {{TOKEN}} tokens as we go. Streaming keeps peak RAM low (one line + one token
+// value at a time) instead of building a ~15-20KB String with many reallocations,
+// which could silently truncate on a fragmented heap. No token spans a newline.
+static void handle_root() {
+  File f = LittleFS.open("/config.html", "r");
+  if (!f) { server.send(500, "text/plain", "config.html missing (run uploadfs)"); return; }
+
+  server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+  server.send(200, "text/html", "");
+
+  while (f.available()) {
+    String line = f.readStringUntil('\n');
+    // Keep the newline we consumed (readStringUntil strips it).
+    if (f.available() || line.length()) line += "\n";
+
+    int from = 0;
+    int open;
+    while ((open = line.indexOf("{{", from)) >= 0) {
+      int close = line.indexOf("}}", open + 2);
+      if (close < 0) break;  // no closing braces on this line; emit remainder as-is
+      if (open > from) server.sendContent(line.substring(from, open));
+      server.sendContent(resolve_token(line.substring(open + 2, close)));
+      from = close + 2;
+    }
+    if (from < (int)line.length()) server.sendContent(line.substring(from));
+  }
+  f.close();
+  server.sendContent("");  // end chunked response
 }
 
 // Raw log text for the auto-refreshing panel on the config page.
@@ -121,8 +172,23 @@ static void handle_config_raw() {
 
 // POST /config.json -> apply an edited JSON document with strict validation.
 static void handle_config_edit() {
+  // Read the raw request body. ESP8266WebServer exposes it via arg("plain") for
+  // non-form content types; fall back to draining the client stream directly so
+  // an application/json POST is never seen as empty (which yields InvalidInput).
   String body = server.arg("plain");
   if (body.length() == 0 && server.hasArg("config")) body = server.arg("config");
+  if (body.length() == 0) {
+    WiFiClient& c = server.client();
+    int len = server.arg("Content-Length").toInt();
+    unsigned long t0 = millis();
+    // Drain whatever remains on the client stream (the raw POST body). Bound by
+    // Content-Length when present, and always by a size + time cap so we can't hang.
+    while (c.connected() && c.available() && body.length() < 4096 &&
+           (len <= 0 || (int)body.length() < len) &&
+           (millis() - t0) < 2000) {
+      body += (char)c.read();
+    }
+  }
   if (body.length() == 0) { server.send(400, "text/plain", "empty body"); return; }
   String err;
   if (!config_apply_json(body, err)) {
@@ -157,74 +223,6 @@ static void send_reboot_page() {
   yield();
   delay(600);
   ESP.restart();
-}
-
-static void handle_save() {
-  if (server.hasArg("ssid")) strncpy(cfg.wifi_ssid, server.arg("ssid").c_str(), sizeof(cfg.wifi_ssid) - 1);
-  if (server.hasArg("pass")) {
-    String p = server.arg("pass");
-    if (p.length() > 0) strncpy(cfg.wifi_pass, p.c_str(), sizeof(cfg.wifi_pass) - 1);
-  }
-  if (server.hasArg("lat")) cfg.lat = server.arg("lat").toFloat();
-  if (server.hasArg("lon")) cfg.lon = server.arg("lon").toFloat();
-  if (server.hasArg("tz")) strncpy(cfg.tz, server.arg("tz").c_str(), sizeof(cfg.tz) - 1);
-  if (server.hasArg("hn")) {
-    String hn = sanitize_hostname(server.arg("hn").c_str());
-    strncpy(cfg.hostname, hn.c_str(), sizeof(cfg.hostname) - 1);
-  }
-  if (server.hasArg("wi")) {
-    int wi = server.arg("wi").toInt();
-    if (wi >= 60) cfg.weather_interval = wi;
-  }
-  if (server.hasArg("me")) cfg.show_metrics = (server.arg("me").toInt() != 0);
-  if (server.hasArg("ni")) { int ni = server.arg("ni").toInt(); if (ni >= 1) cfg.ntp_interval_min = ni; }
-  if (server.hasArg("ns")) cfg.night_start = constrain(server.arg("ns").toInt(), 0, 23);
-  if (server.hasArg("ne")) cfg.night_end = constrain(server.arg("ne").toInt(), 0, 23);
-  if (server.hasArg("eh")) strncpy(cfg.esphome_host, server.arg("eh").c_str(), sizeof(cfg.esphome_host) - 1);
-  if (server.hasArg("ehs")) {
-    // Multiple inputs may share name="ehs" (one per row). Join them.
-    String joined;
-    for (int a = 0; a < server.args(); a++) {
-      if (server.argName(a) == "ehs") {
-        String v = server.arg(a);
-        v.replace("\n", ","); v.replace("\r", "");
-        if (v.length()) { joined += v; joined += ","; }
-      }
-    }
-    if (joined.length() > 0) joined.remove(joined.length() - 1);
-    strncpy(cfg.esphome_sensors, joined.c_str(), sizeof(cfg.esphome_sensors) - 1);
-    cfg.esphome_sensors[sizeof(cfg.esphome_sensors) - 1] = 0;
-  }
-  if (server.hasArg("fr")) cfg.flight_range = constrain(server.arg("fr").toInt(), 0, 250);
-  cfg.backlight_control = server.hasArg("blc");
-  cfg.backlight_active_high = server.hasArg("blh");
-  if (server.hasArg("scr")) {
-    for (int i = 0; i < SCREEN_MAX; i++)
-      cfg.screen_enabled[i] = server.hasArg("sc" + String(i));
-  }
-  if (server.hasArg("mon")) {
-    // Multiple inputs may share name="mon" (one host per row). Collect them all.
-    String m;
-    for (int a = 0; a < server.args(); a++) {
-      if (server.argName(a) == "mon") { String v = server.arg(a); v.replace("\n", ","); v.replace("\r", ""); m += v; m += ","; }
-    }
-    m.replace(" ", "");
-    if (m.length() > 0) m.remove(m.length() - 1);
-    for (int i = 0; i < MONITOR_MAX; i++) cfg.monitors[i][0] = 0;
-    int idx = 0, start = 0;
-    for (unsigned int i = 0; i <= (unsigned int)m.length() && idx < MONITOR_MAX; i++) {
-      if (i == (unsigned int)m.length() || m.charAt(i) == ',') {
-        String host = m.substring(start, i);
-        start = i + 1;
-        if (host.length() > 0 && host.length() < MONITOR_LEN) {
-          strncpy(cfg.monitors[idx], host.c_str(), MONITOR_LEN - 1);
-          idx++;
-        }
-      }
-    }
-  }
-  config_save();
-  send_reboot_page();
 }
 
 // Sanitize a user hostname to a valid DNS label: lowercase alphanumerics and
@@ -316,7 +314,6 @@ void portal_begin() {
   // Always-on admin web UI (station mode)
   server.on("/", handle_root);
   server.on("/style.css", handle_style);
-  server.on("/save", HTTP_POST, handle_save);
   server.on("/logtext", handle_logtext);
   server.on("/config.json", HTTP_GET, handle_config_raw);
   server.on("/config.json", HTTP_POST, handle_config_edit);

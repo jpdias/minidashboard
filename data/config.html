@@ -9,57 +9,57 @@
 <div class="cols">
 <div class="col">
 <h3>Configuration</h3>
-<form method="post" action="/save">
+<form id="cfgform" method="post" action="/config.json">
 <label for="ssid">WiFi SSID</label>
-<input id="ssid" name="ssid" value="{{SSID}}">
+<input id="ssid" data-json="wifi_ssid" value="{{SSID}}">
 <label for="pass">WiFi Password</label>
-<input id="pass" name="pass" type="password" placeholder="(unchanged if blank)">
+<input id="pass" type="password" data-json="wifi_pass" placeholder="(unchanged if blank)">
 <label for="hn">Hostname (mDNS: &lt;name&gt;.local)</label>
-<input id="hn" name="hn" value="{{HN}}">
+<input id="hn" data-json="hostname" value="{{HN}}">
 <label for="lat">Latitude</label>
-<input id="lat" name="lat" value="{{LAT}}">
+<input id="lat" data-json="lat" data-type="num" value="{{LAT}}">
 <label for="lon">Longitude</label>
-<input id="lon" name="lon" value="{{LON}}">
+<input id="lon" data-json="lon" data-type="num" value="{{LON}}">
 <label for="tz">Timezone</label>
-<select id="tz" name="tz">{{TZ_OPTIONS}}</select>
+<select id="tz" data-json="tz">{{TZ_OPTIONS}}</select>
 <label for="wi">Weather refresh (sec, min 60)</label>
-<input id="wi" name="wi" value="{{WI}}">
+<input id="wi" data-json="weather_interval" data-type="num" value="{{WI}}">
 <label for="me">Show metrics (0/1)</label>
-<input id="me" name="me" value="{{ME}}">
+<input id="me" data-json="show_metrics" data-type="num" value="{{ME}}">
 <label for="ns">Night start hour (0-23, same as end = off)</label>
-<input id="ns" name="ns" value="{{NS}}">
+<input id="ns" data-json="night_start" data-type="num" value="{{NS}}">
 <label for="ne">Night end hour (0-23)</label>
-<input id="ne" name="ne" value="{{NE}}">
+<input id="ne" data-json="night_end" data-type="num" value="{{NE}}">
 <label for="ni">NTP resync (minutes)</label>
-<input id="ni" name="ni" value="{{NI}}">
+<input id="ni" data-json="ntp_interval_min" data-type="num" value="{{NI}}">
 <label for="eh">ESPHome host (e.g. ikea-hack.lan)</label>
-<input id="eh" name="eh" value="{{EH}}">
+<input id="eh" data-json="esphome_host" value="{{EH}}">
 <label for="ehs">ESPHome sensors (slug=label per line)</label>
-<div id="ehsRows" class="rows"></div>
-<button type="button" onclick="addRow('ehsRows','ehs')">+ Add sensor</button>
+<div id="ehsRows" class="rows" data-json-join="esphome_sensors">{{EHS_ROWS}}</div>
+<button type="button" class="addrow" onclick="addRow('ehsRows')">+ Add sensor</button>
 <label for="mon">Monitors (one host per line)</label>
-<div id="monRows" class="rows"></div>
-<button type="button" onclick="addRow('monRows','mon')">+ Add host</button>
+<div id="monRows" class="rows" data-json-array="monitors">{{MON_ROWS}}</div>
+<button type="button" class="addrow" onclick="addRow('monRows')">+ Add host</button>
 <label for="fr">Flight radar range (nm, 0=off)</label>
-<input id="fr" name="fr" value="{{FR}}">
+<input id="fr" data-json="flight_range" data-type="num" value="{{FR}}">
 <label>Enabled screens</label>
-<input type="hidden" name="scr" value="1">
-<div class="chk">
-<label class="cb"><input type="checkbox" name="sc0" {{SC0}}> Clock</label>
-<label class="cb"><input type="checkbox" name="sc1" {{SC1}}> ESPHome</label>
-<label class="cb"><input type="checkbox" name="sc2" {{SC2}}> Forecast</label>
-<label class="cb"><input type="checkbox" name="sc3" {{SC3}}> Weather Detail</label>
-<label class="cb"><input type="checkbox" name="sc4" {{SC4}}> Monitors</label>
-<label class="cb"><input type="checkbox" name="sc5" {{SC5}}> Flight Radar</label>
-<label class="cb"><input type="checkbox" name="sc6" {{SC6}}> System</label>
+<div class="chk" data-json-array="screens">
+<label class="cb"><input type="checkbox" data-idx="0" {{SC0}}> Clock</label>
+<label class="cb"><input type="checkbox" data-idx="1" {{SC1}}> ESPHome</label>
+<label class="cb"><input type="checkbox" data-idx="2" {{SC2}}> Forecast</label>
+<label class="cb"><input type="checkbox" data-idx="3" {{SC3}}> Weather Detail</label>
+<label class="cb"><input type="checkbox" data-idx="4" {{SC4}}> Monitors</label>
+<label class="cb"><input type="checkbox" data-idx="5" {{SC5}}> Flight Radar</label>
+<label class="cb"><input type="checkbox" data-idx="6" {{SC6}}> System</label>
 </div>
 <label>Backlight (transistor on D8)</label>
 <div class="chk">
-<label class="cb"><input type="checkbox" name="blc" {{BLC}}> Enable control</label>
-<label class="cb"><input type="checkbox" name="blh" {{BLH}}> Active-high (ON = HIGH)</label>
+<label class="cb"><input type="checkbox" data-json="backlight_control" {{BLC}}> Enable control</label>
+<label class="cb"><input type="checkbox" data-json="backlight_active_high" {{BLH}}> Active-high (ON = HIGH)</label>
 </div>
 <br><br>
 <button type="submit">Save &amp; Reboot</button>
+<span id="formmsg" class="cfgmsg"></span>
 </form>
 <hr>
 <h3>Firmware / FS Update</h3>
@@ -87,22 +87,14 @@
 </div>
 </div>
 <script>
-// Build a list of input rows from a newline-separated seed string. Each row is a
-// text input sharing the same name (server collects all of them). The last row
-// gets an "x" remove button.
-function buildRows(containerId, name, seed){
-  var box=document.getElementById(containerId);
-  box.innerHTML='';
-  var items=seed.split('\n').map(function(s){return s.trim();}).filter(function(s){return s.length;});
-  if(items.length===0) items.push('');
-  items.forEach(function(v){ addRow(containerId, name, v); });
-}
-function addRow(containerId, name, val){
+// Append a new input row to a container. Rows are plain text inputs; their values
+// are collected as a JSON array (or comma-joined string) when the form submits.
+function addRow(containerId){
   var box=document.getElementById(containerId);
   var row=document.createElement('div');
   row.className='row';
   var inp=document.createElement('input');
-  inp.type='text'; inp.name=name; inp.value=(val!==undefined?val:'');
+  inp.type='text'; inp.value='';
   var del=document.createElement('button');
   del.type='button'; del.className='del'; del.textContent='x';
   del.onclick=function(){ row.remove(); };
@@ -116,28 +108,65 @@ setInterval(function(){
     el.scrollTop=el.scrollHeight;
   });
 },2000);
-buildRows('ehsRows','ehs',"{{EHS}}".replace(/,/g,'\n'));
-buildRows('monRows','mon',"{{MON}}".replace(/,/g,'\n'));
-// Submit the raw JSON editor via fetch so validation errors are shown inline
-// instead of dropping into the reboot page. On success the device reboots, so we
-// redirect back to the config page after a short pause (mirrors the form's save).
-document.querySelector('form[action="/config.json"]').addEventListener('submit',function(e){
-  e.preventDefault();
-  var ta=document.getElementById('cfgjson');
-  var msg=document.getElementById('cfgmsg');
-  msg.textContent='saving...';
-  msg.style.color='#aa0';
-  fetch('/config.json',{method:'POST',headers:{'Content-Type':'text/plain'},body:ta.value})
+// Build the config JSON object from the form. One schema, one validation path
+// (config_apply_json on the device).
+function buildConfigFromForm(){
+  var o={};
+  document.querySelectorAll('[data-json]').forEach(function(el){
+    var k=el.getAttribute('data-json');
+    if(el.type==='checkbox') o[k]=el.checked;
+    else if(el.value!==''){
+      o[k]=(el.getAttribute('data-type')==='num') ? Number(el.value) : el.value;
+    }
+  });
+  // Backlight checkboxes may legitimately be false (omit => keep server value),
+  // but for booleans we want to always send true/false. Re-scan them explicitly.
+  document.querySelectorAll('input[type=checkbox][data-json]').forEach(function(el){
+    o[el.getAttribute('data-json')]=el.checked;
+  });
+  // Comma-joined collections (e.g. esphome_sensors).
+  document.querySelectorAll('[data-json-join]').forEach(function(box){
+    var k=box.getAttribute('data-json-join');
+    var parts=[];
+    box.querySelectorAll('input').forEach(function(inp){ var v=inp.value.trim(); if(v) parts.push(v); });
+    o[k]=parts.join(',');
+  });
+  // Array collections (e.g. monitors, screens).
+  document.querySelectorAll('[data-json-array]').forEach(function(box){
+    var k=box.getAttribute('data-json-array');
+    if(k==='screens'){
+      var arr=[]; var boxes=box.querySelectorAll('input[type=checkbox]');
+      for(var i=0;i<boxes.length;i++) arr.push(boxes[i].checked);
+      o[k]=arr;
+    } else {
+      var a=[]; box.querySelectorAll('input').forEach(function(inp){ var v=inp.value.trim(); if(v) a.push(v); });
+      o[k]=a;
+    }
+  });
+  return o;
+}
+// POST a JSON string to /config.json, show the result inline. On success the
+// device reboots, so we bounce back to the config page after a short pause.
+function postConfig(jsonStr, msgEl, okText){
+  msgEl.textContent='saving...';
+  msgEl.style.color='#aa0';
+  fetch('/config.json',{method:'POST',headers:{'Content-Type':'text/plain'},body:jsonStr})
     .then(function(r){ return r.text().then(function(t){ return {ok:r.ok, t:t}; }); })
     .then(function(res){
-      if(res.ok){
-        msg.textContent='saved - rebooting, returning to config...';
-        msg.style.color='#0a0';
-        setTimeout(function(){ location.href='/'; }, 2500);
-      }
-      else { msg.textContent=res.t; msg.style.color='#c33'; }
+      if(res.ok){ msgEl.textContent=okText; msgEl.style.color='#0a0'; setTimeout(function(){ location.href='/'; }, 2500); }
+      else { msgEl.textContent=res.t; msgEl.style.color='#c33'; }
     })
-    .catch(function(err){ msg.textContent='network error: '+err; msg.style.color='#c33'; });
+    .catch(function(err){ msgEl.textContent='network error: '+err; msgEl.style.color='#c33'; });
+}
+// Main config form -> serialize to JSON -> POST.
+document.getElementById('cfgform').addEventListener('submit',function(e){
+  e.preventDefault();
+  postConfig(JSON.stringify(buildConfigFromForm()), document.getElementById('formmsg'), 'saved - rebooting, returning to config...');
+});
+// Raw JSON editor -> POST as-is.
+document.querySelector('form[action="/config.json"]').addEventListener('submit',function(e){
+  e.preventDefault();
+  postConfig(document.getElementById('cfgjson').value, document.getElementById('cfgmsg'), 'saved - rebooting, returning to config...');
 });
 </script>
 </body></html>

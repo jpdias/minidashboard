@@ -5,6 +5,7 @@ input,button,select,textarea,.msg{border-radius:.3rem;width:100%}
 .rows .row{display:flex;gap:6px;align-items:center;margin:4px 0}
 .rows .row input{flex:1 1 auto;width:auto;margin:0}
 .rows .row .del{flex:0 0 auto;width:2.2rem;line-height:1.8rem;background:#c33;font-size:1rem;padding:0}
+.addrow{flex:0 0 auto;width:auto;padding:0 14px;line-height:2rem;font-size:.95rem;margin:6px 0}
 input[type=radio],input[type=checkbox]{width:auto}
 button,input[type=button],input[type=submit]{cursor:pointer;border:0;background-color:#1fa3ec;color:#fff;line-height:2.4rem;font-size:1.2rem;width:100%}
 a{color:#000;font-weight:700;text-decoration:none}a:hover{color:#1fa3ec;text-decoration:underline}

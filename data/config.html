@@ -6,6 +6,20 @@
 <link rel="stylesheet" href="/style.css">
 </head><body>
 <h1>miniDash</h1>
+<div class="ctl">
+  <div class="ctlrow">
+    <span class="ctllbl">Display:</span>
+    <button type="button" id="dispOn" class="ctlbtn">On</button>
+    <button type="button" id="dispOff" class="ctlbtn">Off</button>
+    <span id="dispState" class="ctlstate">-</span>
+  </div>
+  <div class="ctlrow">
+    <span class="ctllbl">Screen:</span>
+    <button type="button" id="scrPrev" class="ctlbtn">&lt; Prev</button>
+    <select id="scrSel"></select>
+    <button type="button" id="scrNext" class="ctlbtn">Next &gt;</button>
+  </div>
+</div>
 <div class="cols">
 <div class="col">
 <h3>Configuration</h3>
@@ -108,6 +122,30 @@ setInterval(function(){
     el.scrollTop=el.scrollHeight;
   });
 },2000);
+// ---- Live control (display + screen) ----
+function renderStatus(s){
+  document.getElementById('dispState').textContent = s.display_on ? 'ON' : 'OFF';
+  var sel=document.getElementById('scrSel');
+  if(sel.options.length!==s.screens.length){
+    sel.innerHTML='';
+    s.screens.forEach(function(sc,i){
+      var o=document.createElement('option');
+      o.value=i; o.textContent=(i+1)+'. '+sc.name+(sc.enabled?'':' (off)');
+      o.disabled=!sc.enabled;
+      sel.appendChild(o);
+    });
+  }
+  sel.value=s.screen;
+}
+function pullStatus(){ fetch('/api/status').then(function(r){return r.json();}).then(renderStatus).catch(function(){}); }
+function post(url){ return fetch(url,{method:'POST'}).then(function(r){return r.json();}).then(renderStatus).catch(function(){}); }
+document.getElementById('dispOn').onclick=function(){ post('/api/display?state=on'); };
+document.getElementById('dispOff').onclick=function(){ post('/api/display?state=off'); };
+document.getElementById('scrPrev').onclick=function(){ post('/api/screen?action=prev'); };
+document.getElementById('scrNext').onclick=function(){ post('/api/screen?action=next'); };
+document.getElementById('scrSel').onchange=function(){ post('/api/screen?index='+this.value); };
+pullStatus();
+setInterval(pullStatus,5000);
 // Build the config JSON object from the form. One schema, one validation path
 // (config_apply_json on the device).
 function buildConfigFromForm(){

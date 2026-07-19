@@ -25,6 +25,12 @@ details.cfgraw>summary{cursor:pointer;font-weight:700;font-size:.95em}
 details.cfgraw .hint{color:#777;font-size:.8em;margin:8px 0}
 details.cfgraw textarea{font-family:monospace;font-size:12px;white-space:pre;width:100%;background:#fff;color:#111}
 details.cfgraw .cfgmsg{display:block;margin-top:8px;font-size:.85em;font-weight:700}
+.ctl{max-width:640px;margin:0 auto 18px;padding:12px;border:1px solid #e3e3e3;border-radius:.3rem;background:#fafafa}
+.ctlrow{display:flex;gap:8px;align-items:center;margin:6px 0}
+.ctlrow .ctllbl{flex:0 0 64px;font-weight:700;font-size:.9em;text-align:right}
+.ctlrow .ctlbtn{flex:0 0 auto;width:auto;padding:0 14px;line-height:2.2rem;font-size:1rem}
+.ctlrow select{flex:1 1 auto;width:auto;margin:0}
+.ctlrow .ctlstate{flex:0 0 auto;font-weight:700;font-size:.95em}
 
 @media (prefers-color-scheme:dark){
   body{background:#12151a;color:#e6e6e6}
@@ -37,4 +43,5 @@ details.cfgraw .cfgmsg{display:block;margin-top:8px;font-size:.85em;font-weight:
   details.cfgraw{background:#1a1e26;border-color:#2a2f3a}
   details.cfgraw textarea{background:#0e1116;color:#e6e6e6}
   button,input[type=submit],input[type=button]{background:#1fa3ec;color:#fff}
+  .ctl{background:#1a1e26;border-color:#2a2f3a}
 }

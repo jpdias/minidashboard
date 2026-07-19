@@ -9,6 +9,7 @@
 #include "netmon.h"
 #include "flight.h"
 #include "moon.h"
+#include "control.h"
 
 #define BTN_PIN D3
 #define BL_PIN  D8            // backlight transistor gate/base (GPIO15; see README)
@@ -58,6 +59,51 @@ static void display_set(bool on) {
     backlight_write(false);
     mlog.println("[DISP] OFF");
   }
+}
+
+// ---- Control API (shared by button, scheduler, and web/REST) ----------------
+
+static const char* SCREEN_NAMES[SCREEN_COUNT] = {
+  "Clock", "ESPHome", "Forecast", "Weather Detail", "Monitors", "Flight Radar", "System"
+};
+
+bool control_screen_enabled(int idx) {
+  if (idx < 0 || idx >= SCREEN_COUNT) return false;
+  if (!cfg.screen_enabled[idx]) return false;
+  if (idx == 5 && cfg.flight_range <= 0) return false;  // flight radar off when range 0
+  return true;
+}
+
+void control_display_set(bool on) { display_set(on); }
+bool control_display_toggle() { display_set(!displayOn); return displayOn; }
+bool control_display_is_on() { return displayOn; }
+
+int control_screen_get() { return screenIndex; }
+int control_screen_count() { return SCREEN_COUNT; }
+const char* control_screen_name(int idx) {
+  return (idx >= 0 && idx < SCREEN_COUNT) ? SCREEN_NAMES[idx] : "";
+}
+
+// Step to the next/prev enabled screen. dir = +1 or -1. Wakes the display.
+static void screen_step(int dir) {
+  for (int n = 0; n < SCREEN_COUNT; n++) {
+    screenIndex = (screenIndex + dir + SCREEN_COUNT) % SCREEN_COUNT;
+    if (control_screen_enabled(screenIndex)) break;
+  }
+  if (!displayOn) display_set(true);
+  drawnStatic = false;
+  mlog.printf("[CTL] screen %d/%d (%s)\n", screenIndex + 1, SCREEN_COUNT, control_screen_name(screenIndex));
+}
+
+void control_screen_next() { screen_step(+1); }
+void control_screen_prev() { screen_step(-1); }
+
+void control_screen_set(int idx) {
+  if (!control_screen_enabled(idx)) return;
+  screenIndex = idx;
+  if (!displayOn) display_set(true);
+  drawnStatic = false;
+  mlog.printf("[CTL] screen set %d/%d (%s)\n", screenIndex + 1, SCREEN_COUNT, control_screen_name(screenIndex));
 }
 
 // True when the current hour falls inside the configured night window.
@@ -251,22 +297,12 @@ void loop() {
       // Long press fires as soon as the threshold is reached (no need to wait
       // for release). Toggle the whole display on/off.
       btnLongDone = true;
-      bool want = !displayOn;
-      display_set(want);
-      mlog.printf("[BTN] long press -> display %s\n", want ? "ON" : "OFF");
+      bool now = control_display_toggle();
+      mlog.printf("[BTN] long press -> display %s\n", now ? "ON" : "OFF");
     }
     if (!down) {
       // Released: if it never became a long press, treat as a screen cycle.
-      if (!btnLongDone) {
-        for (int n = 0; n < SCREEN_COUNT; n++) {
-          screenIndex = (screenIndex + 1) % SCREEN_COUNT;
-          bool disabled = !cfg.screen_enabled[screenIndex] ||
-                          (screenIndex == 5 && cfg.flight_range <= 0);
-          if (!disabled) break;
-        }
-        drawnStatic = false;
-        mlog.printf("[BTN] screen %d/%d\n", screenIndex + 1, SCREEN_COUNT);
-      }
+      if (!btnLongDone) control_screen_next();
       btnHeld = false;
     }
   }

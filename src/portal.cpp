@@ -1,6 +1,7 @@
 #include "logbuf.h"
 #include "portal.h"
 #include "nettime.h"
+#include "control.h"
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266mDNS.h>
@@ -165,6 +166,57 @@ static void handle_logtext() {
   server.send(200, "text/plain", log_text());
 }
 
+// ---- Control API ------------------------------------------------------------
+
+// Build the current control status as a small JSON document.
+static String control_status_json() {
+  String j = "{\"display_on\":";
+  j += control_display_is_on() ? "true" : "false";
+  j += ",\"screen\":";
+  j += String(control_screen_get());
+  j += ",\"count\":";
+  j += String(control_screen_count());
+  j += ",\"screens\":[";
+  for (int i = 0; i < control_screen_count(); i++) {
+    if (i) j += ",";
+    j += "{\"name\":\"";
+    j += htmlEscape(control_screen_name(i));
+    j += "\",\"enabled\":";
+    j += control_screen_enabled(i) ? "true" : "false";
+    j += "}";
+  }
+  j += "]}";
+  return j;
+}
+
+// GET /api/status -> current display + screen state.
+static void handle_api_status() {
+  server.send(200, "application/json", control_status_json());
+}
+
+// POST /api/display?state=on|off|toggle
+static void handle_api_display() {
+  String st = server.arg("state");
+  if (st == "on")       control_display_set(true);
+  else if (st == "off") control_display_set(false);
+  else if (st == "toggle") control_display_toggle();
+  else { server.send(400, "text/plain", "state must be on|off|toggle"); return; }
+  server.send(200, "application/json", control_status_json());
+}
+
+// POST /api/screen?action=next|prev  OR  ?index=N
+static void handle_api_screen() {
+  if (server.hasArg("index")) {
+    control_screen_set(server.arg("index").toInt());
+  } else {
+    String a = server.arg("action");
+    if (a == "next") control_screen_next();
+    else if (a == "prev") control_screen_prev();
+    else { server.send(400, "text/plain", "action must be next|prev or provide index=N"); return; }
+  }
+  server.send(200, "application/json", control_status_json());
+}
+
 // GET /config.json -> pretty JSON view of the current config (read-only fetch).
 static void handle_config_raw() {
   server.send(200, "application/json", config_to_json());
@@ -317,6 +369,9 @@ void portal_begin() {
   server.on("/logtext", handle_logtext);
   server.on("/config.json", HTTP_GET, handle_config_raw);
   server.on("/config.json", HTTP_POST, handle_config_edit);
+  server.on("/api/status", HTTP_GET, handle_api_status);
+  server.on("/api/display", HTTP_POST, handle_api_display);
+  server.on("/api/screen", HTTP_POST, handle_api_screen);
   httpUpdater.setup(&server);   // OTA: firmware + filesystem at /update
   server.begin();
   mlog.println("[PORTAL] admin UI started at http://" + WiFi.localIP().toString());

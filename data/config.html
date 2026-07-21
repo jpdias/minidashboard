@@ -1,106 +1,132 @@
 <!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>miniDash Config</title>
-<link rel="stylesheet" href="/style.css">
-</head><body>
-<h1>miniDash</h1>
-<div class="ctl">
-  <div class="ctlrow">
-    <span class="ctllbl">Display:</span>
-    <button type="button" id="dispOn" class="ctlbtn">On</button>
-    <button type="button" id="dispOff" class="ctlbtn">Off</button>
-    <span id="dispState" class="ctlstate">-</span>
-  </div>
-  <div class="ctlrow">
-    <span class="ctllbl">Screen:</span>
-    <button type="button" id="scrPrev" class="ctlbtn">&lt; Prev</button>
-    <select id="scrSel"></select>
-    <button type="button" id="scrNext" class="ctlbtn">Next &gt;</button>
-  </div>
-</div>
-<div class="cols">
-<div class="col">
-<h3>Configuration</h3>
-<form id="cfgform" method="post" action="/config.json">
-<label for="ssid">WiFi SSID</label>
-<input id="ssid" data-json="wifi_ssid" value="{{SSID}}">
-<label for="pass">WiFi Password</label>
-<input id="pass" type="password" data-json="wifi_pass" placeholder="(unchanged if blank)">
-<label for="hn">Hostname (mDNS: &lt;name&gt;.local)</label>
-<input id="hn" data-json="hostname" value="{{HN}}">
-<label for="lat">Latitude</label>
-<input id="lat" data-json="lat" data-type="num" value="{{LAT}}">
-<label for="lon">Longitude</label>
-<input id="lon" data-json="lon" data-type="num" value="{{LON}}">
-<label for="tz">Timezone</label>
-<select id="tz" data-json="tz">{{TZ_OPTIONS}}</select>
-<label for="wi">Weather refresh (sec, min 60)</label>
-<input id="wi" data-json="weather_interval" data-type="num" value="{{WI}}">
-<label for="me">Show metrics (0/1)</label>
-<input id="me" data-json="show_metrics" data-type="num" value="{{ME}}">
-<label for="ns">Night start hour (0-23, same as end = off)</label>
-<input id="ns" data-json="night_start" data-type="num" value="{{NS}}">
-<label for="ne">Night end hour (0-23)</label>
-<input id="ne" data-json="night_end" data-type="num" value="{{NE}}">
-<label for="ni">NTP resync (minutes)</label>
-<input id="ni" data-json="ntp_interval_min" data-type="num" value="{{NI}}">
-<label for="eh">ESPHome host (e.g. ikea-hack.lan)</label>
-<input id="eh" data-json="esphome_host" value="{{EH}}">
-<label for="ehs">ESPHome sensors (slug=label per line)</label>
-<div id="ehsRows" class="rows" data-json-join="esphome_sensors">{{EHS_ROWS}}</div>
-<button type="button" class="addrow" onclick="addRow('ehsRows')">+ Add sensor</button>
-<label for="mon">Monitors (one host per line)</label>
-<div id="monRows" class="rows" data-json-array="monitors">{{MON_ROWS}}</div>
-<button type="button" class="addrow" onclick="addRow('monRows')">+ Add host</button>
-<label for="fr">Flight radar range (nm, 0=off)</label>
-<input id="fr" data-json="flight_range" data-type="num" value="{{FR}}">
-<label>Enabled screens</label>
-<div class="chk" data-json-array="screens">
-<label class="cb"><input type="checkbox" data-idx="0" {{SC0}}> Clock</label>
-<label class="cb"><input type="checkbox" data-idx="1" {{SC1}}> ESPHome</label>
-<label class="cb"><input type="checkbox" data-idx="2" {{SC2}}> Forecast</label>
-<label class="cb"><input type="checkbox" data-idx="3" {{SC3}}> Weather Detail</label>
-<label class="cb"><input type="checkbox" data-idx="4" {{SC4}}> Monitors</label>
-<label class="cb"><input type="checkbox" data-idx="5" {{SC5}}> Flight Radar</label>
-<label class="cb"><input type="checkbox" data-idx="6" {{SC6}}> System</label>
-</div>
-<label>Backlight (transistor on D8)</label>
-<div class="chk">
-<label class="cb"><input type="checkbox" data-json="backlight_control" {{BLC}}> Enable control</label>
-<label class="cb"><input type="checkbox" data-json="backlight_active_high" {{BLH}}> Active-high (ON = HIGH)</label>
-</div>
-<br><br>
-<button type="submit">Save &amp; Reboot</button>
-<span id="formmsg" class="cfgmsg"></span>
-</form>
-<hr>
-<h3>Firmware / FS Update</h3>
-<form method="POST" action="/update" enctype="multipart/form-data">
-<label for="fw">firmware.bin or littlefs.bin</label>
-<input type="file" id="fw" name="update" accept=".bin">
-<br><br>
-<button type="submit">Upload &amp; Flash</button>
-</form>
-<p class="foot">Device: {{IP}}</p>
-</div>
-<div class="col wide">
-<h3>Live Log</h3>
-<div class="term" id="log">{{LOG}}</div>
-<details class="cfgraw">
-  <summary>Edit config.json</summary>
-  <p class="hint">Raw JSON. Validated on save (ranges clamped, strings capped, unknown keys ignored). Reboots on save.</p>
-  <form method="post" action="/config.json">
-    <textarea id="cfgjson" name="config" rows="22" spellcheck="false">{{CFGJSON}}</textarea>
-    <br>
-    <button type="submit">Save JSON &amp; Reboot</button>
-    <span id="cfgmsg" class="cfgmsg"></span>
-  </form>
-</details>
-</div>
-</div>
-<script>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>miniDash Config</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <h1>miniDash</h1>
+    <div class="ctl">
+      <div class="ctlrow">
+        <span class="ctllbl">Display:</span>
+        <button type="button" id="dispOn" class="ctlbtn">On</button>
+        <button type="button" id="dispOff" class="ctlbtn">Off</button>
+        <span id="dispState" class="ctlstate">-</span>
+      </div>
+      <div class="ctlrow">
+        <span class="ctllbl">Screen:</span>
+        <button type="button" id="scrPrev" class="ctlbtn">&lt; Prev</button>
+        <select id="scrSel">
+        </select>
+        <button type="button" id="scrNext" class="ctlbtn">Next &gt;</button>
+      </div>
+    </div>
+    <div class="cols">
+      <div class="col">
+        <h3>Configuration</h3>
+        <form id="cfgform" method="post" action="/config.json">
+          <label for="ssid">WiFi SSID</label>
+          <input id="ssid" data-json="wifi_ssid" value="{{ SSID }}">
+          <label for="pass">WiFi Password</label>
+          <input id="pass"
+                 type="password"
+                 data-json="wifi_pass"
+                 placeholder="(unchanged if blank)">
+          <label for="hn">Hostname (mDNS: &lt;name&gt;.local)</label>
+          <input id="hn" data-json="hostname" value="{{ HN }}">
+          <label for="lat">Latitude</label>
+          <input id="lat" data-json="lat" data-type="num" value="{{ LAT }}">
+          <label for="lon">Longitude</label>
+          <input id="lon" data-json="lon" data-type="num" value="{{ LON }}">
+          <label for="tz">Timezone</label>
+          <select id="tz" data-json="tz">{{ TZ_OPTIONS }}</select>
+          <label for="wi">Weather refresh (sec, min 60)</label>
+          <input id="wi" data-json="weather_interval" data-type="num" value="{{ WI }}">
+          <label for="me">Show metrics (0/1)</label>
+          <input id="me" data-json="show_metrics" data-type="num" value="{{ ME }}">
+          <label for="ns">Night start hour (0-23, same as end = off)</label>
+          <input id="ns" data-json="night_start" data-type="num" value="{{ NS }}">
+          <label for="ne">Night end hour (0-23)</label>
+          <input id="ne" data-json="night_end" data-type="num" value="{{ NE }}">
+          <label for="ni">NTP resync (minutes)</label>
+          <input id="ni" data-json="ntp_interval_min" data-type="num" value="{{ NI }}">
+          <label for="eh">ESPHome host (e.g. ikea-hack.lan)</label>
+          <input id="eh" data-json="esphome_host" value="{{ EH }}">
+          <label for="ehs">ESPHome sensors (slug=label per line)</label>
+          <div id="ehsRows" class="rows" data-json-join="esphome_sensors">{{ EHS_ROWS }}</div>
+          <button type="button" class="addrow" onclick="addRow('ehsRows')">+ Add sensor</button>
+          <label for="mon">Monitors (one host per line)</label>
+          <div id="monRows" class="rows" data-json-array="monitors">{{ MON_ROWS }}</div>
+          <button type="button" class="addrow" onclick="addRow('monRows')">+ Add host</button>
+          <label for="fr">Flight radar range (nm, 0=off)</label>
+          <input id="fr" data-json="flight_range" data-type="num" value="{{ FR }}">
+          <label>Enabled screens</label>
+          <div class="chk" data-json-array="screens">
+            <label class="cb">
+              <input type="checkbox" data-idx="0" {{ SC0 }}> Clock
+            </label>
+            <label class="cb">
+              <input type="checkbox" data-idx="1" {{ SC1 }}> ESPHome
+            </label>
+            <label class="cb">
+              <input type="checkbox" data-idx="2" {{ SC2 }}> Forecast
+            </label>
+            <label class="cb">
+              <input type="checkbox" data-idx="3" {{ SC3 }}> Weather Detail
+            </label>
+            <label class="cb">
+              <input type="checkbox" data-idx="4" {{ SC4 }}> Monitors
+            </label>
+            <label class="cb">
+              <input type="checkbox" data-idx="5" {{ SC5 }}> Flight Radar
+            </label>
+            <label class="cb">
+              <input type="checkbox" data-idx="6" {{ SC6 }}> System
+            </label>
+          </div>
+          <label>Backlight (transistor on D8)</label>
+          <div class="chk">
+            <label class="cb">
+              <input type="checkbox" data-json="backlight_control" {{ BLC }}> Enable control
+            </label>
+            <label class="cb">
+              <input type="checkbox" data-json="backlight_active_high" {{ BLH }}> Active-high (ON = HIGH)
+            </label>
+          </div>
+          <br>
+          <br>
+          <button type="submit">Save &amp; Reboot</button>
+          <span id="formmsg" class="cfgmsg"></span>
+        </form>
+        <hr>
+        <h3>Firmware / FS Update</h3>
+        <form method="POST" action="/update" enctype="multipart/form-data">
+          <label for="fw">firmware.bin or littlefs.bin</label>
+          <input type="file" id="fw" name="update" accept=".bin">
+          <br>
+          <br>
+          <button type="submit">Upload &amp; Flash</button>
+        </form>
+        <p class="foot">Device: {{ IP }}</p>
+      </div>
+      <div class="col wide">
+        <h3>Live Log</h3>
+        <div class="term" id="log">{{ LOG }}</div>
+        <details class="cfgraw">
+          <summary>Edit config.json</summary>
+          <p class="hint">Raw JSON. Validated on save (ranges clamped, strings capped, unknown keys ignored). Reboots on save.</p>
+          <form method="post" action="/config.json">
+            <textarea id="cfgjson" name="config" rows="22" spellcheck="false">{{CFGJSON}}</textarea>
+            <br>
+            <button type="submit">Save JSON &amp; Reboot</button>
+            <span id="cfgmsg" class="cfgmsg"></span>
+          </form>
+        </details>
+      </div>
+    </div>
+    <script>
 // Append a new input row to a container. Rows are plain text inputs; their values
 // are collected as a JSON array (or comma-joined string) when the form submits.
 function addRow(containerId){
@@ -206,5 +232,6 @@ document.querySelector('form[action="/config.json"]').addEventListener('submit',
   e.preventDefault();
   postConfig(document.getElementById('cfgjson').value, document.getElementById('cfgmsg'), 'saved - rebooting, returning to config...');
 });
-</script>
-</body></html>
+    </script>
+  </body>
+</html>

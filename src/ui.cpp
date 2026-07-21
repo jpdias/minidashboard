@@ -109,7 +109,7 @@ void ui_loading_update(unsigned long waitedMs, unsigned long timeoutMs) {
   tft.fillRect(14, 116, 40, 8, ST7735_BLACK);                  // clear timer
   tft.setTextColor(ST7735_YELLOW);
   char buf[24];
-  snprintf(buf, sizeof(buf), "%.0lds", (unsigned long)(waitedMs / 1000));
+  snprintf(buf, sizeof(buf), "%lus", (unsigned long)(waitedMs / 1000));
   tft.print(buf);
 }
 
@@ -368,7 +368,7 @@ void ui_screen_forecast(int h, int m, int s, const Forecast &f) {
       ui_draw_icon(d.code, 20, cy, ST7735_YELLOW);
       // Middle-top: weekday label.
       time_t dt = base + (time_t)i * 86400;
-      struct tm *tmv = localtime(&dt);
+      const struct tm *tmv = localtime(&dt);
       tft.setTextColor(ST7735_CYAN);
       tft.setTextSize(1);
       tft.setCursor(44, y + 6);

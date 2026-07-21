@@ -1,5 +1,6 @@
 .pio
 .venv
+.venv-tools
 .vscode
 
 .vscode/c_cpp_properties.json

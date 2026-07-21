@@ -89,7 +89,7 @@ void time_tick() {
 
 void time_now(int &h, int &m, int &s, int &dow, int &day, int &mon, int &yr) {
   time_t now = time(nullptr);
-  struct tm *t = localtime(&now);
+  const struct tm *t = localtime(&now);
   h = t->tm_hour; m = t->tm_min; s = t->tm_sec;
   dow = t->tm_wday; day = t->tm_mday; mon = t->tm_mon + 1; yr = t->tm_year + 1900;
 }

@@ -1,0 +1,6 @@
+# Development tooling (node-free). Install into a venv:
+#   python3 -m venv .venv-tools
+#   .venv-tools/bin/pip install -r requirements-dev.txt
+#
+# djlint formats/lints the web assets under data/ (HTML + embedded CSS).
+djlint==1.40.10

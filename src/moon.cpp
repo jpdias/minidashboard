@@ -141,7 +141,7 @@ void moon_tick() {
     case M_IDLE: {
       // Day-of-year key so we fetch exactly once per local calendar day.
       time_t now = time(nullptr);
-      struct tm *lt = localtime(&now);
+      const struct tm *lt = localtime(&now);
       int yday = lt->tm_yday;
       if (yday == gFetchedYday) return;                 // already have today
       if (millis() - lastAttempt < 10000 && lastAttempt) return;  // retry backoff

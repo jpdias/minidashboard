@@ -75,7 +75,7 @@ void monitors_tick() {
 }
 
 float monitor_uptime_pct(int i) {
-  MonitorState &m = monitors[i];
+  const MonitorState &m = monitors[i];
   unsigned long total = millis() - m.totalSince;
   if (total == 0) return 100.0f;
   unsigned long up = total - m.downtime;

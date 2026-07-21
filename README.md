@@ -162,6 +162,28 @@ The web pages (config/log) live in `data/` and are served from LittleFS, so run
 
 On Windows/WSL, symlink `.pio/build` to a native (non-`/mnt/c`) path to avoid cross-compiler errors.
 
+## Code quality tools
+
+Two node-free checkers are wired up for the codebase.
+
+### C/C++ static analysis (Cppcheck via PlatformIO)
+Configured in `platformio.ini` (`[env]` `check_*`). Scans `src/` only.
+```bash
+pio check            # warnings/style/performance/portability on our sources
+```
+
+### Web assets formatter/linter (djLint)
+Formats and lints the HTML + embedded CSS under `data/`. Node-free (pure Python);
+config lives in `.djlintrc`. Inline `<script>` blocks are left untouched
+(`format_js: false`). Note the templating tokens are written `{{ TOKEN }}`; the
+server trims the inner whitespace, so either `{{TOKEN}}` or `{{ TOKEN }}` works.
+```bash
+python3 -m venv .venv-tools
+.venv-tools/bin/pip install -r requirements-dev.txt
+.venv-tools/bin/djlint data/ --check      # show proposed changes
+.venv-tools/bin/djlint data/ --reformat   # apply
+```
+
 ## Configure
 First boot opens a `miniDash-Setup` AP (pw `minidashpass`) for WiFi + location.
 After connected, the device serves a config page at its IP (port 80) with a live

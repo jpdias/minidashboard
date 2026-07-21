@@ -216,8 +216,8 @@ void setup() {
 }
 
 void draw_screen(int h, int m, int s, int dow, int day, int mon, int yr) {
-  Weather &weather = net_weather();
-  Forecast &forecast = net_forecast();
+  const Weather &weather = net_weather();
+  const Forecast &forecast = net_forecast();
   String extIp = net_extip();
   switch (screenIndex) {
     case 0:
@@ -315,9 +315,9 @@ void loop() {
   // a manual long-press override persist between edges, while every edge still
   // reclaims control (turns off entering night, on entering day). Skip until NTP
   // has synced, since before that the clock reads epoch 00:xx (a false night).
-  static bool wasNight = false;
-  static bool nightInit = false;
   if (time_is_synced()) {
+    static bool wasNight = false;
+    static bool nightInit = false;
     bool night = schedule_is_night(h);
     if (!nightInit) {
       nightInit = true;

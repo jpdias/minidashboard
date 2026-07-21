@@ -55,16 +55,19 @@ static String monitor_rows() {
 // ESPHome sensor rows: split the comma-separated string into escaped input rows.
 static String esphome_rows() {
   String s = cfg.esphome_sensors;
-  const char* parts[16]; int np = 0;
+  String h;
   int start = 0;
-  for (int i = 0; i <= (int)s.length() && np < 16; i++) {
+  for (int i = 0; i <= (int)s.length(); i++) {
     if (i == (int)s.length() || s[i] == ',') {
-      String tok = s.substring(start, i); start = i + 1; tok.trim();
-      if (tok.length()) { char* b = (char*)malloc(tok.length() + 1); if (b) { strcpy(b, tok.c_str()); parts[np++] = b; } }
+      String tok = s.substring(start, i);
+      start = i + 1;
+      tok.trim();
+      if (tok.length()) {
+        const char* one[1] = { tok.c_str() };
+        h += render_rows("ehs", one, 1);
+      }
     }
   }
-  String h = render_rows("ehs", parts, np);
-  for (int i = 0; i < np; i++) free((void*)parts[i]);
   return h;
 }
 
@@ -152,7 +155,9 @@ static void handle_root() {
       int close = line.indexOf("}}", open + 2);
       if (close < 0) break;  // no closing braces on this line; emit remainder as-is
       if (open > from) server.sendContent(line.substring(from, open));
-      server.sendContent(resolve_token(line.substring(open + 2, close)));
+      String tok = line.substring(open + 2, close);
+      tok.trim();  // tolerate "{{ TOKEN }}" (e.g. after HTML formatting)
+      server.sendContent(resolve_token(tok));
       from = close + 2;
     }
     if (from < (int)line.length()) server.sendContent(line.substring(from));

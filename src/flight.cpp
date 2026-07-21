@@ -128,7 +128,9 @@ static void parse(Stream &s) {
     a.dst = o["dst"] | 999.0f;
     a.dir = o["dir"] | 0.0f;
     a.track = o["track"] | -1.0f;
+    // cppcheck-suppress badBitmaskCheck ; ArduinoJson's operator| supplies a default
     a.alt = o["alt_baro"] | 0;
+    // cppcheck-suppress badBitmaskCheck ; ArduinoJson's operator| supplies a default
     classify(o["category"] | "", o["dbFlags"] | 0, a.tag);
     n = insert_sorted(gData.ac, n, a);
   }

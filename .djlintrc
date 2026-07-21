@@ -1,0 +1,9 @@
+{
+  "indent": 2,
+  "profile": "html",
+  "preserve_leading_space": true,
+  "format_css": true,
+  "format_js": false,
+  "max_line_length": 120,
+  "ignore": "H006,H013,H021,H030,H031"
+}

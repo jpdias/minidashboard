@@ -1,14 +1,21 @@
 <!DOCTYPE html>
-<html lang="en"><head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Saved</title>
-<link rel="stylesheet" href="/style.css">
-</head><body>
-<h1>miniDash</h1>
-<div class="msg"><strong>Saved.</strong><br>Rebooting... returning to config in <span id="c">10</span>s.</div>
-<script>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Saved</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <h1>miniDash</h1>
+    <div class="msg">
+      <strong>Saved.</strong>
+      <br>
+      Rebooting... returning to config in <span id="c">10</span>s.
+    </div>
+    <script>
 var n=10;var el=document.getElementById('c');
 var t=setInterval(function(){n--;if(el)el.textContent=n;if(n<=0){clearInterval(t);location.href='/';}},1000);
-</script>
-</body></html>
+    </script>
+  </body>
+</html>
